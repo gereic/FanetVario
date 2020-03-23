@@ -12,6 +12,10 @@ Fanet::Fanet(){
 }
 
 
+void Fanet::setNMEAOUT(NmeaOut *_pNmeaOut){
+    pNmeaOut = _pNmeaOut;
+}
+
 bool Fanet::begin(uint8_t SerialNumber,uint8_t RxPin, uint8_t TxPin,uint8_t ResetPin){
     _ResetPin = ResetPin;
     pFanetSerial = new HardwareSerial(SerialNumber);
@@ -29,6 +33,7 @@ bool Fanet::begin(uint8_t SerialNumber,uint8_t RxPin, uint8_t TxPin,uint8_t Rese
     _myData.aircraftType = eFanetAircraftType::PARA_GLIDER; //default Paraglider
     recBufferIndex = 0;
     bInitOk = false;
+    pNmeaOut = NULL;
     return true;
 }
 
@@ -91,6 +96,17 @@ void Fanet::initModule(uint32_t tAct){
             initCount--; //back on step ask module again
         }
         if (bFNAOk){
+            bFAXOk = false;
+            pFanetSerial->print("#FAX\n"); //flarm expiration
+            timeout = tAct; //reset timeout
+            initCount++;
+        }
+        break;
+    case 2:
+        if (btimeout){
+            initCount--; //back on step ask module again
+        }
+        if (bFAXOk){
             bFNCOk = false;
             //Serial.print("#FNC 1,1\n");
             pFanetSerial->print("#FNC 1,1\n"); //PG, online tracking
@@ -98,7 +114,7 @@ void Fanet::initModule(uint32_t tAct){
             initCount++;
         }
         break;
-    case 2:
+    case 3:
         if (btimeout){
             initCount--; //back on step ask module again
         }
@@ -110,7 +126,7 @@ void Fanet::initModule(uint32_t tAct){
             initCount++;
         }
         break;
-    case 3:
+    case 4:
         if (btimeout){
             initCount--; //back on step ask module again
         }
@@ -122,7 +138,7 @@ void Fanet::initModule(uint32_t tAct){
             initCount++;
         }
         break;
-    case 4:
+    case 5:
         if (btimeout){
             initCount--; //back on step ask module again
         }
@@ -136,6 +152,10 @@ void Fanet::initModule(uint32_t tAct){
     default:
         break;
     }
+}
+
+String Fanet::getFlarmExp(void){
+    return FlarmExp;
 }
 
 String Fanet::getAircraftType(eFanetAircraftType type){
@@ -165,11 +185,38 @@ void Fanet::getMyID(String line){
 
 }
 
+void Fanet::getFAX(String line){
+    String s1;
+    int ret = 0;
+    FlarmExp = "";
+    ret = getStringValue(line,&s1,ret,"#FAX ",",");
+    if (ret >= 0){
+        FlarmExp = String(atoi(s1.c_str()) + 1900);
+    }
+    ret = getStringValue(line,&s1,ret,",",",");
+    if (ret >= 0){
+        FlarmExp += "-" + String(atoi(s1.c_str()));
+    }
+    ret = getStringValue(line,&s1,ret,",","");
+    if (ret >= 0){
+        FlarmExp += "-" + String(atoi(s1.c_str()));
+    }
+    Serial.println(FlarmExp);
+}
+
+bool Fanet::initOk(void){
+    return bInitOk;
+}
+
 void Fanet::DecodeLine(String line){
+    Serial.println(line);
     if (line.startsWith("#DGV")){
     }else if (line.startsWith("#FNA")){
         getMyID(line);
         bFNAOk = true;
+    }else if (line.startsWith("#FAX")){
+        getFAX(line);
+        bFAXOk = true;
     }else if (line.startsWith("#FNR OK")){
         bFNCOk = true;
     }else if (line.startsWith("#DGR OK")){
@@ -184,6 +231,10 @@ void Fanet::DecodeLine(String line){
         Serial.println(line);
     }
 
+}
+
+String Fanet::getMyDevId(void){
+    return _myData.DevId;
 }
 
 void Fanet::run(void){    
@@ -271,9 +322,13 @@ void Fanet::CheckReceivedPackage(String line){
             Serial.println("length not ok");
         }
         //Serial.println(line); //directly to serial out
-    }else if (msgType == 4){
-        //weather-data
-        Serial.println(line); //directly to serial out
+    }else if ((msgType == 2) || (msgType == 3) || (msgType == 4)){
+        //Type 2 --> Device-Name
+        //Type 3 --> MSG
+        //Type 4 --> weather-data
+        if (pNmeaOut != NULL){
+            pNmeaOut->write(line + "\r\n"); //directly to serial out
+        }
     }
 }
 
@@ -383,7 +438,12 @@ int Fanet::getStringValue(String s,String *sRet,unsigned int fromIndex,String ke
   int pos = s.indexOf(keyword,fromIndex);
   if (pos < 0) return -1; //not found
   pos += keyword.length();
-  int pos2 = s.indexOf(delimiter,pos);
+  int pos2 = 0;
+  if (delimiter.length() > 0){
+    pos2 = s.indexOf(delimiter,pos);
+  }else{
+      pos2 = s.length();
+  }
   if (pos2 < 0) return -1; //not found
   *sRet = s.substring(pos,pos2);
   return pos2;

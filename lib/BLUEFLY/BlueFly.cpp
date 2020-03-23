@@ -11,11 +11,12 @@ BlueFly::BlueFly(){
 }
 
 
-bool BlueFly::begin(uint8_t SerialNumber,uint8_t RxPin, uint8_t TxPin){
+bool BlueFly::begin(uint8_t SerialNumber,uint8_t RxPin, uint8_t TxPin,NmeaOut *_pNmeaOut){
     pBlueFlySerial = new HardwareSerial(SerialNumber);
     pBlueFlySerial->begin(115200, SERIAL_8N1, RxPin, TxPin);
     recBufferIndex = 0;
     nmea.setBuffer(nmeaBuffer, sizeof(nmeaBuffer));
+    pNmeaOut = _pNmeaOut;
     return true;
 }
 
@@ -34,7 +35,7 @@ void BlueFly::run(void){
         if (lineBuffer[recBufferIndex] == '\n'){
             //Serial.print("length=");Serial.println(recBufferIndex);
             lineBuffer[recBufferIndex] = 0; //zero-termination
-            Serial.println(lineBuffer);
+            pNmeaOut->write(String(lineBuffer) + "\r\n");
             recBufferIndex = 0;
         }else{
             if (lineBuffer[recBufferIndex] != '\r'){

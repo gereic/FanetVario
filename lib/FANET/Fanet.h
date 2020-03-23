@@ -10,6 +10,7 @@
 
 #include <HardwareSerial.h>
 #include <string.h>
+#include <nmeaout.h>
 
 #define FANET_MAXRECBUFFER 255
 #define FANET_DEBUG
@@ -56,6 +57,9 @@ class Fanet {
 public:
     Fanet(); //constructor
     bool begin(uint8_t SerialNumber,uint8_t RxPin, uint8_t TxPin,uint8_t ResetPin);
+    String getMyDevId(void);
+    String getFlarmExp(void);
+    void setNMEAOUT(NmeaOut *_pNmeaOut);
     void setPilotname(String name);
     void setAircraftType(eFanetAircraftType type);
     void run(void); //has to be called cyclic
@@ -66,8 +70,11 @@ public:
     void printFanetData(trackingData tData);
     void writeStateData2FANET(stateData *tData);
     String getAircraftType(eFanetAircraftType type);
+    bool initOk(void);
 protected:
-    HardwareSerial *pFanetSerial;    
+    String FlarmExp;
+    HardwareSerial *pFanetSerial;  
+    NmeaOut *pNmeaOut;  
     uint8_t initCount;
     void initModule(uint32_t tAct);
     void DecodeLine(String line);
@@ -90,6 +97,7 @@ protected:
     void resetModule();
     void sendPilotName(uint32_t tAct);
     void getMyID(String line);
+    void getFAX(String line);
     char lineBuffer[FANET_MAXRECBUFFER];
     uint8_t recBufferIndex;
     trackingData _myData;
@@ -97,6 +105,7 @@ protected:
     bool bFNCOk;
     bool bDGPOk;
     bool bFAPOk;
+    bool bFAXOk;
     bool bInitOk;
     
 };

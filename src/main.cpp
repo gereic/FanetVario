@@ -14,8 +14,9 @@
 #include "CalcTools.h"
 #include "WebHelper.h"
 #include "fileOps.h"
-#include "Fanet.h"
+
 #include "main.h"
+
 
 /***************  Configuration Begin *******************/
 
@@ -45,6 +46,7 @@ Flarm flarm;
 bool ppsTriggered;
 struct SettingsData setting;
 Fanet fanet;
+NmeaOut nmeaout;
 
 static union {
   uint8_t efuse_mac[6];
@@ -74,6 +76,17 @@ void printSettings(){
   Serial.print("Pilotname=");Serial.println(setting.PilotName);
   Serial.print("Switch WIFI OFF after 3 min=");Serial.println(setting.bSwitchWifiOff3Min);
   Serial.print("Wifi-down-time=");Serial.println(setting.wifiDownTime/1000.);
+  Serial.print("UDP_SERVER=");Serial.println(setting.UDPServerIP);
+  Serial.print("UDP_PORT=");Serial.println(setting.UDPSendPort);
+  Serial.print("NMEA OUTPUT=");
+  if (setting.NMEAOUTPUT == eNMEAOUTPUT::UDP_OUT){
+    Serial.println("UDP");
+  }else if (setting.NMEAOUTPUT == eNMEAOUTPUT::BLUETOOTH_OUT){
+    Serial.println("BLUETOOTH");
+  }else{
+    Serial.println("SERIAL");
+  }
+  
 }
 
 void IntPPS(){
@@ -92,45 +105,39 @@ static uint32_t ESP32_getChipId()
 
 
 void setupWifi(){
-  //esp_err_t ret = ESP_OK;
-  //uint8_t null_mac[6] = {0};
-  chipmacid = ESP.getEfuseMac();
-  host_name += String((ESP32_getChipId() & 0xFFFFFF), HEX);
-  //#ifdef CON2WIFI
-  // Connect to WiFi network
-  // Check WiFi connection
-  // ... check mode
+  //chipmacid = ESP.getEfuseMac();
+  //host_name += String((ESP32_getChipId() & 0xFFFFFF), HEX);
+  
 
-  if (WiFi.getMode() != WIFI_STA)
-  {
+  //if ((setting.ssid.length() > 0) && (setting.password.length() > 0)){
     WiFi.mode(WIFI_STA);
     delay(10);
-  }
-  if (WiFi.SSID() != setting.ssid || WiFi.psk() != setting.password)
-  {
-    Serial.println(F("WiFi config changed."));
+    if (WiFi.SSID() != setting.ssid || WiFi.psk() != setting.password)
+    {
+      Serial.println(F("WiFi config changed."));
 
-    // ... Try to connect to WiFi station.
-    WiFi.begin(setting.ssid.c_str(), setting.password.c_str());
+      // ... Try to connect to WiFi station.
+      WiFi.begin(setting.ssid.c_str(), setting.password.c_str());
 
-    // ... Pritn new SSID
-    Serial.print(F("new SSID: "));
-    Serial.println(WiFi.SSID());
+      // ... Pritn new SSID
+      Serial.print(F("new SSID: "));
+      Serial.println(WiFi.SSID());
 
-  }
-  else
-  {
-    // ... Begin with sdk config.
-    WiFi.begin();
-  }
-  WiFi.setHostname(host_name.c_str());
-  Serial.println("Hostname: " + host_name);
-  Serial.println(F("Wait for WiFi connection."));
-  uint32_t wifiTimeout = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - wifiTimeout < 10000) {
-    delay(500);
-    Serial.print(".");
-  }Serial.println("");
+    }
+    else
+    {
+      // ... Begin with sdk config.
+      WiFi.begin();
+    }
+    WiFi.setHostname(host_name.c_str());
+    Serial.println("Hostname: " + host_name);
+    Serial.println(F("Wait for WiFi connection."));
+    uint32_t wifiTimeout = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - wifiTimeout < 10000) {
+      delay(500);
+      Serial.print(".");
+    }Serial.println("");
+  //}
   if(WiFi.status() == WL_CONNECTED){
     // ... print IP Address
     Serial.print(F("IP address: "));
@@ -140,6 +147,7 @@ void setupWifi(){
     // Go into software AP mode.
     WiFi.mode(WIFI_AP);
     delay(10);
+    //WiFi.setHostname(host_name.c_str());
     Serial.print(F("Setting soft-AP configuration ... "));
     Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ?
       F("Ready") : F("Failed!"));
@@ -208,22 +216,32 @@ void setup() {
   load_configFile(); //load configuration
 
   //setting.bSwitchWifiOff3Min = false;
-  if (setting.bSwitchWifiOff3Min){
+  if ((setting.bSwitchWifiOff3Min) && (setting.NMEAOUTPUT != eNMEAOUTPUT::UDP_OUT)){
     setting.wifiDownTime = 180000;
   }else{
-    setting.wifiDownTime = 0;
+    setting.wifiDownTime = 0; //don't switch off wifi in case of udp output
   }
   printSettings();
+  
+
+  fanet.begin(1,16,17,15); //Hardwareserial, rxPin, txPin, Reset-Pin
+  while (!fanet.initOk()){
+    fanet.run(); //call run to get DevId
+  }
+  setting.myDevId = fanet.getMyDevId();
+  setting.FlarmExp = fanet.getFlarmExp();
+  host_name += setting.myDevId; //String((ESP32_getChipId() & 0xFFFFFF), HEX);
 
   setupWifi();
 
 
   delay(500);
-  fanet.begin(1,16,17,15); //Hardwareserial, rxPin, txPin, Reset-Pin
+  nmeaout.begin(setting.NMEAOUTPUT,setting.UDPServerIP,setting.UDPSendPort,host_name);
+  fanet.setNMEAOUT(&nmeaout); //Hardwareserial, rxPin, txPin, Reset-Pin)
   fanet.setPilotname(setting.PilotName); //set name of Pilot
   fanet.setAircraftType(setting.AircraftType);
-  blueFly.begin(2,23,22); //Hardwareserial, rxPin, txPin
-  flarm.begin();
+  blueFly.begin(2,23,22,&nmeaout); //Hardwareserial, rxPin, txPin
+  flarm.begin(&nmeaout);
 
 }
 
@@ -366,6 +384,7 @@ void loop() {
     //Serial.println("PPS triggered");
     sendFanetStatus();
   }
+  nmeaout.run();
   /*
   if (WifiConnectOk){
     //server.handleClient();

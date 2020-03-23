@@ -91,6 +91,8 @@ void status() {
   body{font: normal 12px Verdana, Arial, sans-serif;background-color:#e6e7e8}</style>\
   <table border=0 cellpadding=6><tr><td><h1 align=center>FANET-VARIO status</h1>";
   //s += "<tr><td>received NMEA-lines</td><td>" + String(blueFly.nmea.getMessageID()) + "</td></tr>";
+  s += "<tr><td>device-ID</td><td>" + setting.myDevId + "</td></tr>";
+  s += "<tr><td>Flarm-exp</td><td>" + setting.FlarmExp + "</td></tr>";
   s += "<tr><td>count satellites</td><td>" + String(blueFly.nmea.getNumSatellites()) + "</td></tr>";
   s += "<tr><td>sat-system</td><td>";
   // Navigation system, N=GNSS, P=GPS, L=GLONASS, A=Galileo, '\0'=none
@@ -117,7 +119,8 @@ void status() {
     s += "no FIX";
   }
   s += "</td></tr>";
-  s += "<tr><td colspan=3><table><tr><td><form method=post action=\"config\"><input type=hidden name=work1 value=please1><input type=submit class=\"bu\" value='Configure'></form></td>";
+  s += "<tr><td align=left><input type=button onClick=\"location.href='/config'\" value='Settings'></td></tr>";
+  //s += "<tr><td colspan=3><table><tr><td><form method=post action=\"config\"><input type=hidden name=work1 value=please1><input type=submit class=\"bu\" value='Configure'></form></td>";
   s += "</table>";
 
  server.send ( 200, "text/html", s.c_str() );
@@ -148,36 +151,60 @@ void configure() {
     s += ">" + fanet.getAircraftType((eFanetAircraftType)i);
   }
   s += "</select>";
-  s += "<tr><td><input type=submit class=bu value=Submit></form></td></tr>\
-        <tr><td><a href=/>Return to FANET-VARIO Home</a></td><tr></a>\
-        </table>";
+  s += "<tr><td>UDP Server-IP</td><td><input class=bu type=text name=udpserver value=\"" + setting.UDPServerIP + "\"></td></tr>";
+  s += "<tr><td>UDP Port</td><td><input class=bu type=text name=udpport value=\"" + String(setting.UDPSendPort) + "\"></td></tr>";
+  s += "<tr><td>NMEA OUTPUT</td><td><select class=bu name=nmeaoutput>";
+  s += "<option value=0 ";
+  if (setting.NMEAOUTPUT == eNMEAOUTPUT::SERIAL_OUT) s += "selected";
+  s += ">SERIAL</option>";
+  s += "<option value=1 ";
+  if (setting.NMEAOUTPUT == eNMEAOUTPUT::UDP_OUT) s += "selected";
+  s += ">UDP</option>";
+  /*  
+  s += "<option value=2 ";
+  if (setting.NMEAOUTPUT == eNMEAOUTPUT::BLUETOOTH_OUT) s += "selected";
+  s += ">BLUETOOTH</option>";
+  s += "<option value=3 ";
+  if (setting.NMEAOUTPUT == eNMEAOUTPUT::BLE_OUT) s += "selected";
+  s += ">BLE</option>";
+  */
+  s += "</select></td></tr>";
+
+
+  s += "<tr><td><input type=submit class=bu value=Submit></form></td></tr>";
+  //s += "<tr><td><a href=/>Return to FANET-VARIO Home</a></td><tr></a>"
+  s += "<tr><td align=left><input type=button onClick=\"location.href='/'\" value='HOME'></td></tr>";
+  s += "</table>";
 
  server.send ( 200, "text/html", s.c_str() );
 }
 
 void savesettings(){
-  for ( uint8_t i = 0; i < server.args(); i++ )
-  {
-    if ( server.argName ( i ) == "ssid")
-    {
-      setting.ssid = server.arg ( i );
+  for ( uint8_t i = 0; i < server.args(); i++ ){
+    if ( server.argName(i) == "ssid"){
+      setting.ssid = server.arg(i);
     }
-    if ( server.argName ( i ) == "password")
-    {
-      setting.password = server.arg ( i );
+    if ( server.argName(i) == "password"){
+      setting.password = server.arg(i);
     }
-
-    if ( server.argName ( i ) == "PilotName")
-    {
-      setting.PilotName = server.arg ( i );
+    if ( server.argName(i) == "PilotName"){
+      setting.PilotName = server.arg(i);
     }
-    if ( server.argName ( i ) == "AircraftType")
-    {
+    if ( server.argName(i) == "AircraftType"){
       setting.AircraftType = (eFanetAircraftType)atoi(server.arg(i).c_str());
     }
-    if ( server.argName ( i ) == "SwitchWifiOff")
-    {
+    if ( server.argName(i) == "SwitchWifiOff"){
       setting.bSwitchWifiOff3Min = (bool)atoi(server.arg (i).c_str());
+    }
+    if ( server.argName(i) == "udpserver"){
+      setting.UDPServerIP = server.arg(i);
+    }
+    if ( server.argName(i) == "udpport"){
+      setting.UDPSendPort = atoi(server.arg(i).c_str());
+    }
+    if ( server.argName(i) == "nmeaoutput")
+    {
+      setting.NMEAOUTPUT = (eNMEAOUTPUT)atoi(server.arg(i).c_str());
     }
   }
   server.send ( 200, "text/html", "<html><head>\

@@ -12,7 +12,8 @@ Flarm::Flarm(){
 }
 
 
-bool Flarm::begin(){
+bool Flarm::begin(NmeaOut *_pNmeaOut){
+    pNmeaOut = _pNmeaOut;
     return true;
 }
 String Flarm::getHexFromByte(uint8_t val){
@@ -68,7 +69,7 @@ void Flarm::writeFlarmData(FlarmtrackingData *myData,FlarmtrackingData *movePilo
     		                    movePilotData->DevId + "," + (int32_t)round(movePilotData->heading) + ",0,"  +
 								 String(currentSpeed,1) + "," + String(movePilotData->climb,1) + ","+ getHexFromByte1(uint8_t(movePilotData->aircraftType));
     //Serial.println(getHexFromByte((uint8_t)movePilotData->aircraftType));
-    Serial.print(addChecksum(movingpilotData));
+    pNmeaOut->write(addChecksum(movingpilotData));
 }
 
 
@@ -80,7 +81,7 @@ void Flarm::writeDataPort(uint32_t tAct){
         tWrite = tAct;
         //Serial.println("$PFLAU,6,1,2,1,0,144,0,235,446*55");
         String s = "$PFLAU,6,1,2,1,0,144,0,235,446";
-        Serial.print(addChecksum(s));
+        pNmeaOut->write(addChecksum(s));
     }
 }
 

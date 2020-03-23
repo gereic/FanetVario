@@ -10,6 +10,8 @@
 
 #include <HardwareSerial.h>
 #include "CalcTools.h"
+#include <nmeaout.h>
+
 
 enum class eFlarmAircraftType {
   UNKNOWN = 0,
@@ -47,10 +49,11 @@ typedef struct {
 class Flarm {
 public:
     Flarm(); //constructor
-    bool begin();
+    bool begin(NmeaOut *_pNmeaOut);
     void run(void); //has to be called cyclic
     void writeFlarmData(FlarmtrackingData *myData,FlarmtrackingData *movePilotData);
 protected:
+    NmeaOut *pNmeaOut;  
     void writeDataPort(uint32_t tAct);
     String addChecksum(String s);
     String getHexFromByte(uint8_t val);
