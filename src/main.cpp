@@ -40,7 +40,6 @@ String host_name = HOSTNAME;
 char SerialRecBuffer[Serial_MAXRECBUFFER];
 uint8_t SerialRecBufferIndex;
 
-
 BlueFly blueFly;
 Flarm flarm;
 bool ppsTriggered;
@@ -48,10 +47,12 @@ struct SettingsData setting;
 Fanet fanet;
 NmeaOut nmeaout;
 
+/*
 static union {
   uint8_t efuse_mac[6];
   uint64_t chipmacid;
 };
+*/
 IPAddress local_IP(192,168,1,1);
 IPAddress gateway(192,168,1,1);
 IPAddress subnet(255,255,255,0);
@@ -65,6 +66,14 @@ const char* ap_default_psk = "12345678"; ///< Default PSK.
 WebServer server(80);
 
 bool WifiConnectOk = true;
+
+/*
+BLEServer *pServer = NULL;
+BLECharacteristic * pTxCharacteristic;
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+uint8_t txValue = 0;
+*/
 
 void web_task(void *pvParameters);
 
@@ -93,6 +102,7 @@ void IntPPS(){
   ppsTriggered = true;
 }
 
+/*
 static uint32_t ESP32_getChipId()
 {
 #if !defined(SOFTRF_ADDRESS)
@@ -100,9 +110,9 @@ static uint32_t ESP32_getChipId()
                    (efuse_mac[3] << 16) | (efuse_mac[2] << 24);
 #else
   return (SOFTRF_ADDRESS & 0xFFFFFFFFU );
-#endif /* SOFTRF_ADDRESS */
+#endif // SOFTRF_ADDRESS 
 }
-
+*/
 
 void setupWifi(){
   //chipmacid = ESP.getEfuseMac();

@@ -159,8 +159,8 @@ void configure() {
   s += ">SERIAL</option>";
   s += "<option value=1 ";
   if (setting.NMEAOUTPUT == eNMEAOUTPUT::UDP_OUT) s += "selected";
-  s += ">UDP</option>";
-  /*  
+  s += ">UDP</option>";  
+  /*
   s += "<option value=2 ";
   if (setting.NMEAOUTPUT == eNMEAOUTPUT::BLUETOOTH_OUT) s += "selected";
   s += ">BLUETOOTH</option>";
