@@ -20,9 +20,16 @@ public:
     bool begin(uint8_t SerialNumber,uint8_t RxPin, uint8_t TxPin,NmeaOut *_pNmeaOut);
     void writeToSerial(String s);
     void run(void); //has to be called cyclic
+    float getAlt();
+    float getClimb();
     MicroNMEA nmea;
     uint16_t nmeaCount = 0;
 protected:
+    float alt;
+    float climb;
+    void checkLine(String s);
+    void checkLXWP0(String s);
+    int getStringValue(String s,String *sRet,unsigned int fromIndex,String keyword,String delimiter);
     NmeaOut *pNmeaOut;  
     HardwareSerial *pBlueFlySerial;    
     char lineBuffer[BLUEFLY_MAXRECBUFFER];

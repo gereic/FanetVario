@@ -289,7 +289,10 @@ void sendFanetStatus(){
   tFanetData.lat = blueFly.nmea.getLatitude() / 1000000.;
   tFanetData.lon = blueFly.nmea.getLongitude() / 1000000.;
 	long alt = 0;
-  blueFly.nmea.getAltitude(alt);
+  if (!blueFly.nmea.getAltitude(alt)){
+    alt = long(blueFly.getAlt() * 1000);
+    //Serial.println("alt not valid");
+  }
   if (oldAlt == 0){
     oldAlt = alt;
   }

@@ -209,7 +209,7 @@ bool Fanet::initOk(void){
 }
 
 void Fanet::DecodeLine(String line){
-    Serial.println(line);
+    //Serial.println(line);
     if (line.startsWith("#DGV")){
     }else if (line.startsWith("#FNA")){
         getMyID(line);
