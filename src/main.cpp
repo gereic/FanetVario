@@ -20,7 +20,7 @@
 
 /***************  Configuration Begin *******************/
 
-
+#define IOV2 //define IO-Version for Skytraxx Pene
 
 #define CON2WIFI
 
@@ -234,7 +234,11 @@ void setup() {
   printSettings();
   
 
+#ifdef IOV2
+  fanet.begin(1,17,16,5); //Hardwareserial, rxPin, txPin, Reset-Pin
+#else
   fanet.begin(1,16,17,15); //Hardwareserial, rxPin, txPin, Reset-Pin
+#endif  
   while (!fanet.initOk()){
     fanet.run(); //call run to get DevId
   }
