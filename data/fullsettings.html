@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="style.css">
+<meta charset='utf-8'>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>GXAirCom</title>
+<script language="javascript" type="text/javascript">
+ 
+ var url = "ws://" + window.location.host + ":1337/";
+ 
+// This is called when the page finishes loading
+function init() {
+ 
+    // Connect to WebSocket server
+    wsConnect(url);
+}
+ 
+// Call this to connect to the WebSocket server
+function wsConnect(url) {
+    
+    // Connect to WebSocket server
+    websocket = new WebSocket(url);
+    
+    // Assign callbacks
+    websocket.onopen = function(evt) { onOpen(evt) };
+    websocket.onclose = function(evt) { onClose(evt) };
+    websocket.onmessage = function(evt) { onMessage(evt) };
+    websocket.onerror = function(evt) { onError(evt) };
+}
+ 
+// Called when a WebSocket connection is established with the server
+function onOpen(evt) {
+ 
+    // Log connection state
+    console.log("Connected");
+    
+    // write page-number --> then we get all values for page
+    doSend(JSON.stringify({ page : 10 }));//send page-number
+}
+ 
+// Called when the WebSocket connection is closed
+function onClose(evt) {
+ 
+    // Log disconnection state
+    console.log("Disconnected");
+    
+    // Try to reconnect after a few seconds
+    setTimeout(function() { wsConnect(url) }, 2000);
+}
+
+function callMainPage(){
+  window.location="/index.html"
+}
+
+//this function sends all values
+function sendValues(){  
+  var obj = {
+  PilotName : document.getElementById("PilotName").value,
+  type : document.getElementById("type").value,
+
+  outble : Number(document.getElementById("outble").checked),
+
+  appw : document.getElementById("appw").value,
+  wificonnect : document.getElementById("wificonnect").value,
+  ssid : document.getElementById("ssid").value,
+  password : document.getElementById("password").value,
+  wifioff : document.getElementById("wifioff").value,
+  
+  save : 1 
+			};
+  doSend(JSON.stringify(obj));
+  document.getElementById("btnsave").innerText  = "rebooting ..."
+  var delay = 2000;
+  setTimeout( callMainPage, delay )
+}
+ 
+// Called when a message is received from the server
+function onMessage(evt) {
+ 
+    // Print out our received message
+    console.log("Received: " + evt.data);
+    
+    // Update circle graphic with LED state
+    var myObj = JSON.parse(evt.data);
+    for (var key of Object.keys(myObj)) {
+        console.log(key + " -> " + myObj[key])
+        var e = document.getElementById(key);
+        if (e instanceof HTMLSelectElement) {     // <select>
+          document.getElementById(key).value = myObj[key];
+        }else if ((e instanceof HTMLInputElement ) && (e.getAttribute('type') == 'checkbox')){     // <input checkbox>
+          if (myObj[key] == 1){
+            document.getElementById(key).checked = true;
+          }else{
+            document.getElementById(key).checked = false;
+          }
+          
+        }else{
+          document.getElementById(key).textContent = myObj[key];
+          document.getElementById(key).value = myObj[key];
+        }
+    }
+    setVis(); //now set visibility
+}
+ 
+// Called when a WebSocket error occurs
+function onError(evt) {
+    console.log("ERROR: " + evt.data);
+}
+ 
+// Sends a message to the server (and prints it to the console)
+function doSend(message) {
+    console.log("Sending: " + message);
+    websocket.send(message);
+}
+ 
+// Call the init function as soon as the page loads
+window.addEventListener("load", init, false);
+ 
+</script>
+</head>
+<body>
+  <div style="text-align:left;display:inline-block;color:#eaeaea;min-width:340px;">
+    <div style='text-align:center;color:#eaeaea;'>
+      <noscript>JavaScript aktivieren um GXAirCom benutzen zu können<br></noscript>
+      <h1>%APPNAME%-%VERSION%</h1>
+      <h3>build-date: %BUILD%</h3>
+      <h3>%PILOT%</h3>      
+    </div>
+    <fieldset>
+      <legend><b>general settings</b></legend>
+      <table style="width:100&#37;">
+        <tbody>
+          <tr>
+            <th id="tName">PilotName</th>
+            <td><input type="text" id="PilotName" name="PilotName"></td>
+          </tr>
+          <tr id="VisAirCraftType">
+            <th>Aircraft Type</th>
+            <td><select name="type" id="type">
+              <option value="0">Unknown</option>
+              <option value="1">Paraglider</option>
+              <option value="2">Hangglider</option>
+              <option value="3">Balloon</option>
+              <option value="4">Glider</option>
+              <option value="5">Powered Aircraft</option>
+              <option value="6">Helicopter</option>
+              <option value="7">UAV</option>
+            </select></td>
+          </tr>
+        </tbody>      
+      </table>
+    </fieldset>
+    <p></p>
+    <p></p>
+    <p></p>
+    <p></p>
+    <fieldset>
+      <legend><b>output settings</b></legend>
+      <table style="width:100&#37;">
+        <tbody>
+          <tr>
+            <th>Bluetooth (BLE)</th>
+            <td><input type="checkbox" id="outble" name="outble"></td>
+          </tr>
+        </tbody>      
+      </table>
+    </fieldset>
+    <p></p>
+    <p></p>
+    <fieldset>
+      <legend><b>WIFI settings</b></legend>
+      <table style="width:100&#37;">
+        <tbody>
+          <tr>
+            <th>ACCESS-POINT Password</th>
+            <td><input type="text" id="appw" name="appw"></td>
+          </tr>
+          <p></p>
+          <p></p>      
+          <tr>
+            <th>connect to wifi:</th>
+            <td><select onchange="setVis()" name="wificonnect" id="wificonnect">
+              <option value="0">don't connect</option>
+              <option value="1">connect (try only once)</option>
+              <option value="2">connect (always try to reconnect)</option>
+            </select></td>
+          </tr>
+          <tr id="VisWifiSsid">
+            <th>WIFI SSID</th>
+            <td><input type="text" id="ssid" name="ssid"></td>
+          </tr>
+          <tr id="VisWifiPwd">
+            <th>WIFI Password</th>
+            <td><input type="text" id="password" name="password"></td>
+          </tr>
+          <tr>
+            <th>Wifi off</th>
+            <td><select name="wifioff" id="wifioff">
+              <option value="0">always on</option>
+              <option value="60">1min.</option>
+              <option value="120">2min.</option>
+              <option value="180">3min.</option>
+              <option value="300">5min.</option>
+              <option value="600">10min.</option>
+            </select></td>
+          </tr>
+        </tbody>      
+      </table>
+    </fieldset>
+    <p></p>
+    <p></p>
+    <table style="width:100&#37;">
+      <tr>
+        <td style="width:100&#37;">
+          <button id="btnsave" name="btnsave" onClick="sendValues()" class="button bgrn">save and reboot</button>
+        </td>
+      </tr>
+    </table>
+    <p></p>
+    <p></p>
+    <table style="width:100&#37;">
+      <tr>
+        <td style="width:100&#37;">
+          <button onClick="location.href='/index.html'">main menu</button>
+        </td>
+      </tr>
+    </table>
+    <p></p>
+    <div style='text-align:right;font-size:11px;'><hr><a href='https://www.getronix.at' target='_blank' style='color:#aaa;'>GXAirCom by Gerald Eichler</a>
+    </div>
+  </div>
+</body>
+</html>

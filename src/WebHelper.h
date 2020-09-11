@@ -1,17 +1,22 @@
 #include <WiFi.h>
-#include <WiFiClient.h>
-#include <WebServer.h>
-#include <ESPmDNS.h>
-#include <Update.h>
+#include <SPIFFS.h>
+#include <ESPAsyncWebServer.h>
+#include <WebSocketsServer.h>
+#include <ArduinoJson.h>
 #include "main.h"
 #include "Fanet.h"
 #include "BlueFly.h"
 #include "fileOps.h"
+#include <Update.h>
 
-extern WebServer server;
+
 extern struct SettingsData setting;
+extern struct StatusData status;
+extern bool WebUpdateRunning;
 extern Fanet fanet;
 extern BlueFly blueFly;
+extern const char compile_date[];
 
 void Web_setup(void);
+void Web_stop(void);
 void Web_loop(void);

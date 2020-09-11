@@ -1,277 +1,350 @@
-#include "WebHelper.h"
-/*
- * Login page
+#include <WebHelper.h>
+
+// Globals
+AsyncWebServer server(80);
+WebSocketsServer webSocket = WebSocketsServer(1337);
+int led_state = 0;
+char msg_buf[500];
+#define MAXCLIENTS 10
+uint8_t clientPages[MAXCLIENTS];
+
+/***********************************************************
+ * Functions
  */
-const char* loginIndex = 
- "<form name='loginForm'>"
-    "<table width='20%' bgcolor='A09F9F' align='center'>"
-        "<tr>"
-            "<td colspan=2>"
-                "<center><font size=4><b>ESP32 Login Page</b></font></center>"
-                "<br>"
-            "</td>"
-            "<br>"
-            "<br>"
-        "</tr>"
-        "<td>Username:</td>"
-        "<td><input type='text' size=25 name='userid'><br></td>"
-        "</tr>"
-        "<br>"
-        "<br>"
-        "<tr>"
-            "<td>Password:</td>"
-            "<td><input type='Password' size=25 name='pwd'><br></td>"
-            "<br>"
-            "<br>"
-        "</tr>"
-        "<tr>"
-            "<td><input type='submit' onclick='check(this.form)' value='Login'></td>"
-        "</tr>"
-    "</table>"
-"</form>"
-"<script>"
-    "function check(form)"
-    "{"
-    "if(form.userid.value=='admin' && form.pwd.value=='admin')"
-    "{"
-    "window.open('/serverIndex')"
-    "}"
-    "else"
-    "{"
-    " alert('Error Password or Username')/*displays error message*/"
-    "}"
-    "}"
-"</script>";
- 
-/*
- * Server Index Page
- */
- 
-const char* serverIndex = 
-"<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>"
-"<form method='POST' action='#' enctype='multipart/form-data' id='upload_form'>"
-   "<input type='file' name='update'>"
-        "<input type='submit' value='Update'>"
-    "</form>"
- "<div id='prg'>progress: 0%</div>"
- "<script>"
-  "$('form').submit(function(e){"
-  "e.preventDefault();"
-  "var form = $('#upload_form')[0];"
-  "var data = new FormData(form);"
-  " $.ajax({"
-  "url: '/update',"
-  "type: 'POST',"
-  "data: data,"
-  "contentType: false,"
-  "processData:false,"
-  "xhr: function() {"
-  "var xhr = new window.XMLHttpRequest();"
-  "xhr.upload.addEventListener('progress', function(evt) {"
-  "if (evt.lengthComputable) {"
-  "var per = evt.loaded / evt.total;"
-  "$('#prg').html('progress: ' + Math.round(per*100) + '%');"
-  "}"
-  "}, false);"
-  "return xhr;"
-  "},"
-  "success:function(d, s) {"
-  "console.log('success!')" 
- "},"
- "error: function (a, b, c) {"
- "}"
- "});"
- "});"
- "</script>";
 
-void status() {
-  String s;
-  s = "<style>.bu {background-color: #d7d7d7;border: none;color: black;padding: 8px 32px;\
-  text-decoration: none;font-size: 18px;margin: 4px 2px;}\
-  body{font: normal 12px Verdana, Arial, sans-serif;background-color:#e6e7e8}</style>\
-  <table border=0 cellpadding=6><tr><td><h1 align=center>FANET-VARIO status</h1>";
-  //s += "<tr><td>received NMEA-lines</td><td>" + String(blueFly.nmea.getMessageID()) + "</td></tr>";
-  s += "<tr><td>device-ID</td><td>" + setting.myDevId + "</td></tr>";
-  s += "<tr><td>Flarm-exp</td><td>" + setting.FlarmExp + "</td></tr>";
-  s += "<tr><td>count satellites</td><td>" + String(blueFly.nmea.getNumSatellites()) + "</td></tr>";
-  s += "<tr><td>sat-system</td><td>";
-  // Navigation system, N=GNSS, P=GPS, L=GLONASS, A=Galileo, '\0'=none
-  switch (blueFly.nmea.getNavSystem())
-  {
-  case 'N':
-    s += "GNSS";
-    break;
-  case 'P':
-    s += "GPS";
-    break;
-  case 'L':
-    s += "GLONASS";
-    break;
-  case 'A':
-    s += "Galileo";
-    break;
-  }
-  s += "</td></tr>";
-  s += "<tr><td>GPS-status</td><td>";
-  if (blueFly.nmea.isValid()){
-    s += "FIX OK";
-  }else{
-    s += "no FIX";
-  }
-  s += "</td></tr>";
-  s += "<tr><td align=left><input type=button onClick=\"location.href='/config'\" value='Settings'></td></tr>";
-  //s += "<tr><td colspan=3><table><tr><td><form method=post action=\"config\"><input type=hidden name=work1 value=please1><input type=submit class=\"bu\" value='Configure'></form></td>";
-  s += "</table>";
+// Callback: receiving any WebSocket message
+void onWebSocketEvent(uint8_t client_num,
+                      WStype_t type,
+                      uint8_t * payload,
+                      size_t length) {
+  StaticJsonDocument<500> doc;                      //Memory pool
+  JsonObject root = doc.to<JsonObject>();
+  DeserializationError error;
+  uint8_t value = 0;
+  // Figure out the type of WebSocket event
+  switch(type) {
 
- server.send ( 200, "text/html", s.c_str() );
-}
+    // Client has disconnected
+    case WStype_DISCONNECTED:
+      if (client_num < MAXCLIENTS) clientPages[client_num] = 0;
+      log_i("[%u] Disconnected!", client_num);
+      break;
 
-void configure() {
-  String s;
-  s = "<style>.bu {background-color: #d7d7d7;border: none;color: black;padding: 8px 32px;\
-  text-decoration: none;font-size: 18px;margin: 4px 2px;}\
-  body{font: normal 12px Verdana, Arial, sans-serif;background-color:#e6e7e8}</style>\
-  <table border=0 cellpadding=6><tr><td><h1 align=center>Configure FANET-VARIO</h1>\
-  <form method=post action=\"savesettings\">";
-  s += "<tr><td>WIFI SSID</td><td><input class=bu type=text name=ssid value=\"" + setting.ssid + "\"></td></tr>";
-  s += "<tr><td>WIFI Password</td><td><input class=bu type=text name=password value=\"" + setting.password + "\"></td></tr>";
-  s += "<tr><td>Pilot Name</td><td><input class=bu type=text name=PilotName value=\"" + setting.PilotName + "\"></td></tr>";
-  s += "<tr><td>Wifi Off(wifi off after 3 mins to save power<br>Leave no if you dont know what this means)</td>\
-        <td><select class=bu name=SwitchWifiOff>\
-        <option value=1 ";
-  if (setting.bSwitchWifiOff3Min) s += "selected";
-  s += ">yes</option><option value=0 ";
-  if (!setting.bSwitchWifiOff3Min) s += "selected";
-  s += ">no</option></select></td></tr>";
+    // New client has connected
+    case WStype_CONNECTED:
+      {
+        IPAddress ip = webSocket.remoteIP(client_num);
+        log_i("[%u] Connection from ", client_num);
+        //log_i("%s",ip.toString());        
+      }
+      break;
 
-  s += "<tr><td>Aircraft Type</td><td><select class=bu name=AircraftType>";
-  for (int i = 1; i <= 7; i++){
-    s += "<option value=" + String(i);
-    if ((int)setting.AircraftType == i) s += " selected";
-    s += ">" + fanet.getAircraftType((eFanetAircraftType)i);
-  }
-  s += "</select>";
-  s += "<tr><td>UDP Server-IP</td><td><input class=bu type=text name=udpserver value=\"" + setting.UDPServerIP + "\"></td></tr>";
-  s += "<tr><td>UDP Port</td><td><input class=bu type=text name=udpport value=\"" + String(setting.UDPSendPort) + "\"></td></tr>";
-  s += "<tr><td>NMEA OUTPUT</td><td><select class=bu name=nmeaoutput>";
-  s += "<option value=0 ";
-  if (setting.NMEAOUTPUT == eNMEAOUTPUT::SERIAL_OUT) s += "selected";
-  s += ">SERIAL</option>";
-  s += "<option value=1 ";
-  if (setting.NMEAOUTPUT == eNMEAOUTPUT::UDP_OUT) s += "selected";
-  s += ">UDP</option>";  
-  /*
-  s += "<option value=2 ";
-  if (setting.NMEAOUTPUT == eNMEAOUTPUT::BLUETOOTH_OUT) s += "selected";
-  s += ">BLUETOOTH</option>";
-  s += "<option value=3 ";
-  if (setting.NMEAOUTPUT == eNMEAOUTPUT::BLE_OUT) s += "selected";
-  s += ">BLE</option>";
-  */
-  s += "</select></td></tr>";
+    // Handle text messages from client
+    case WStype_TEXT:
 
-
-  s += "<tr><td><input type=submit class=bu value=Submit></form></td></tr>";
-  //s += "<tr><td><a href=/>Return to FANET-VARIO Home</a></td><tr></a>"
-  s += "<tr><td align=left><input type=button onClick=\"location.href='/'\" value='HOME'></td></tr>";
-  s += "</table>";
-
- server.send ( 200, "text/html", s.c_str() );
-}
-
-void savesettings(){
-  for ( uint8_t i = 0; i < server.args(); i++ ){
-    if ( server.argName(i) == "ssid"){
-      setting.ssid = server.arg(i);
-    }
-    if ( server.argName(i) == "password"){
-      setting.password = server.arg(i);
-    }
-    if ( server.argName(i) == "PilotName"){
-      setting.PilotName = server.arg(i);
-    }
-    if ( server.argName(i) == "AircraftType"){
-      setting.AircraftType = (eFanetAircraftType)atoi(server.arg(i).c_str());
-    }
-    if ( server.argName(i) == "SwitchWifiOff"){
-      setting.bSwitchWifiOff3Min = (bool)atoi(server.arg (i).c_str());
-    }
-    if ( server.argName(i) == "udpserver"){
-      setting.UDPServerIP = server.arg(i);
-    }
-    if ( server.argName(i) == "udpport"){
-      setting.UDPSendPort = atoi(server.arg(i).c_str());
-    }
-    if ( server.argName(i) == "nmeaoutput")
-    {
-      setting.NMEAOUTPUT = (eNMEAOUTPUT)atoi(server.arg(i).c_str());
-    }
-  }
-  server.send ( 200, "text/html", "<html><head>\
-	<style>.bu {background-color: #d7d7d7;border: none;color: black;padding: 8px 32px;\
-	text-decoration: none;font-size: 18px;margin: 4px 2px;}\
-	body{font: normal 12px Verdana, Arial, sans-serif;background-color:#e6e7e8}</style>\
-	<h1>FANET-VARIO Rebooting<br><br></h1>Please reconnect to the Access Point again<br><br><a href=/>Reconnect to FANET_VARIO home page</a></h2>" );
-  delay(2000);
-  write_configFile(); //write settings in config-file
-
-}
-
-void Web_setup()
-{
-    /*
-    server.on("/", HTTP_GET, []() {
-        server.sendHeader("Connection", "close");
-        server.send(200, "text/html", loginIndex);
-    });
-    */
-   Serial.println("WEBSETUP");
-   server.on ( "/", HTTP_ANY, status );
-    server.on ( "/config", HTTP_ANY, configure );
-    server.on ( "/status", HTTP_ANY, status );
-    server.on("/serverIndex", HTTP_GET, []() {
-      server.sendHeader("Connection", "close");
-      server.send(200, "text/html", serverIndex);
-    });
-    //handling save settings
-    server.on ( "/savesettings", HTTP_POST, savesettings );
-    //handling uploading firmware file 
-    server.on("/update", HTTP_POST, []() {
-      server.sendHeader("Connection", "close");
-      server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
-      ESP.restart();
-    }, []() {
-      HTTPUpload& upload = server.upload();
-      if (upload.status == UPLOAD_FILE_START) {
-        Serial.printf("Update: %s\n", upload.filename.c_str());
-        if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { //start with max available size
-          Update.printError(Serial);
+      // Print out raw message
+      
+      log_i("[%u] Received text: %s", client_num, payload);      
+      error = deserializeJson(doc, payload);
+      if (error) {   //Check for errors in parsing
+        log_i("deserializeJson() failed: %s",error.c_str());
+        return;
+    
+      }
+      if (root.containsKey("page")){
+        value = doc["page"];                    //Get value of sensor measurement
+        if (client_num < MAXCLIENTS) clientPages[client_num] = value;
+        log_i("page=%d",value);
+        doc.clear();
+        if (clientPages[client_num] == 1){ //info
+          doc["myDevId"] = setting.myDevId;
+          doc["compiledate"] = String(compile_date);
+          doc["fVersion"] = setting.fanetVersion;
+          serializeJson(doc, msg_buf);
+          webSocket.sendTXT(client_num, msg_buf);
+        }else if (clientPages[client_num] == 10){ //full settings
+          doc.clear();
+          doc["PilotName"] = setting.PilotName;
+          doc["type"] = (uint8_t)setting.AircraftType;
+          doc["appw"] = setting.wifi.appw;
+          doc["wificonnect"] = (uint8_t)setting.wifi.connect;
+          doc["ssid"] = setting.wifi.ssid;
+          doc["password"] = setting.wifi.password;
+          doc["wifioff"] = setting.wifi.tWifiStop;
+          doc["outble"] = setting.OutputBLE;
+          serializeJson(doc, msg_buf);
+          webSocket.sendTXT(client_num, msg_buf);
         }
-      } else if (upload.status == UPLOAD_FILE_WRITE) {
-        // flashing firmware to ESP
-        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-          Update.printError(Serial);
+      }else if (root.containsKey("save")){
+        //save settings-page
+        value = doc["save"];
+        if (value == 1){
+          //general settings-page          
+          SettingsData newSetting = setting;
+          if (root.containsKey("PilotName")) newSetting.PilotName = doc["PilotName"].as<String>();
+          if (root.containsKey("type")) newSetting.AircraftType = (eFanetAircraftType)doc["type"].as<uint8_t>();
+          if (root.containsKey("appw")) newSetting.wifi.appw = doc["appw"].as<String>();          
+          if (root.containsKey("wificonnect")) newSetting.wifi.connect = (bool)doc["wificonnect"].as<uint8_t>();
+          if (root.containsKey("ssid")) newSetting.wifi.ssid = doc["ssid"].as<String>();
+          if (root.containsKey("password")) newSetting.wifi.password = doc["password"].as<String>();
+          if (root.containsKey("wifioff")) newSetting.wifi.tWifiStop = doc["wifioff"].as<uint32_t>();
+          if (root.containsKey("outble")) newSetting.OutputBLE = doc["outble"].as<uint8_t>();
+          log_i("write config-to file --> rebooting");
+          //delay(10);
+          write_configFile(&newSetting);
+
         }
-      } else if (upload.status == UPLOAD_FILE_END) {
-        if (Update.end(true)) { //true to set the size to the current progress
-          Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
-        } else {
-          Update.printError(Serial);
+      }      
+      break;
+
+    // For everything else: do nothing
+    case WStype_BIN:
+    case WStype_ERROR:
+    case WStype_FRAGMENT_TEXT_START:
+    case WStype_FRAGMENT_BIN_START:
+    case WStype_FRAGMENT:
+    case WStype_FRAGMENT_FIN:
+    default:
+      break;
+  }
+}
+
+String processor(const String& var){
+  String sRet = "";
+  //log_i("%s",var.c_str());
+  if(var == "SOCKETIP"){
+    return status.myIP;
+  }else if (var == "APPNAME"){
+    return APPNAME;
+  }else if (var == "PILOT"){
+    return setting.PilotName;
+  }else if (var == "VERSION"){
+    return VERSION;
+  }else if (var == "BUILD"){
+    return String(compile_date);
+  }
+    
+  return "";
+}
+
+// Callback: send 404 if requested file does not exist
+void onPageNotFound(AsyncWebServerRequest *request) {
+  IPAddress remote_ip = request->client()->remoteIP();
+  log_e("[%s] HTTP GET request of %s",remote_ip.toString().c_str(),request->url().c_str());
+  request->send(404, "text/plain", "Not found");
+}
+
+static int restartNow = false;
+
+static void handle_update_progress_cb(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+  static uint8_t fileType = 0;
+  static File file;
+  uint32_t free_space = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+  if (!index){
+    //Serial.print("Total bytes:    "); Serial.println(SPIFFS.totalBytes());
+    //Serial.print("Used bytes:     "); Serial.println(SPIFFS.usedBytes());
+    //Serial.println(filename);
+    //Serial.println("Update");
+    //log_i("stopping standard-task");
+    //vTaskDelete(xHandleStandard); //delete standard-task
+    WebUpdateRunning = true;
+    delay(500); //wait 1 second until tasks are stopped
+    //Update.runAsync(true);
+    if (filename == "spiffs.bin"){
+      fileType = 0;
+      if (!Update.begin(0x30000,U_SPIFFS)) {
+        Update.printError(Serial);
+      }
+    }else if (filename == "firmware.bin"){
+      fileType = 0;
+      if (!Update.begin(free_space,U_FLASH)) {
+        Update.printError(Serial);
+      }
+    }else if (filename == "fanet.xlb"){
+      fileType = 1;
+      log_i("upload file %s",filename.c_str());
+      file = SPIFFS.open("/" + filename,FILE_WRITE);
+    }else{
+      fileType = 2;
+    }
+  }
+  if (fileType == 0){
+    //it is an firmware-update or spiffs update
+    if (Update.write(data, len) != len) {
+      Update.printError(Serial);
+    }
+
+    if (final) {
+      if (!Update.end(true)){
+        Update.printError(Serial);
+      } else {
+        restartNow = true;//Set flag so main loop can issue restart call
+        Serial.println("Update complete");      
+      }
+    }
+  }else if (fileType == 1){
+    if (file){
+      //log_i("write %d bytes",len);
+      file.write(data,len);
+      if (final) {      
+        file.close();
+        log_i("file upload complete");
+        if (filename == "fanet.xlb"){
+          log_i("start update fanet-module");
+          status.UpdateFanetModule = 1; //now we can update the fanet-module
         }
       }
-    });
-    server.begin();
-
+    }else{
+      log_i("file upload error");
+    }
+  }else{
+    if (final){
+      log_i("error unknown filetype");
+    }
+  }
 }
 
+void Web_setup(void){
+  for (int i = 0;i < MAXCLIENTS;i++) clientPages[i] = 0;
+  // On HTTP request for root, provide index.html file
+  server.on("/fwupdate", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url() + ".html", "text/html",false,processor);
+  });
+  // handler for the /update form POST (once file upload finishes)
+  server.on("/fwupdate", HTTP_POST, [](AsyncWebServerRequest *request){
+      request->send(200);
+    }, handle_update_progress_cb);
+  server.on("/settings.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/fullsettings.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/setgeneral.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/setgs.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/setoutput.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/setwifi.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/developmenue.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/sendmessage.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/neighbours.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/index.html", "text/html",false,processor);
+  });
+  server.on("/info.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/msgtype1.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/msgtype2.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/msgtype3.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/msgtype4.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/msgtype5.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+  server.on("/msgtype7.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
 
+  server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/css");
+  });
 
-void Web_loop()
-{
-  //dnsServer.processNextRequest();
-  yield();
-  //DEBUG_SERIAL_UART_MAX("[%ld] - After DNS Process\r\n", millis());
-  server.handleClient();
-  yield();
-  // DEBUG_SERIAL_UART_MAX("[%ld] - Ending Webloop\r\n", millis());
+  server.on("/communicator.html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, request->url(), "text/html",false,processor);
+  });
+
+  // On HTTP request for style sheet, provide style.css
+  //server.on("/style.css", HTTP_GET, onCSSRequest);
+
+  // Handle requests for pages that do not exist
+  server.onNotFound(onPageNotFound);
+
+  // Start web server
+  server.begin();
+
+  // Start WebSocket server and assign callback
+  webSocket.begin();
+  webSocket.onEvent(onWebSocketEvent);
+}
+
+void Web_stop(void){
+  webSocket.close();
+  server.end();
+}
+
+void Web_loop(void){
+  static uint32_t tLife = millis();
+  static uint16_t counter = 0;
+  static uint32_t tRestart = millis();
+  uint32_t tAct = millis();
+  // Look for and handle WebSocket data
+  webSocket.loop();
+  if ((tAct - tLife) >= 500){
+    tLife = tAct;
+    StaticJsonDocument<300> doc;                      //Memory pool
+    doc.clear();
+    doc["counter"] = counter;
+    doc["gpsFix"] = String(blueFly.nmea.isValid());
+    doc["gpsNumSat"] = String(blueFly.nmea.getNumSatellites());
+    doc["gpslat"] = String(blueFly.nmea.getLatitude(),6);
+    doc["gpslon"] = String(blueFly.nmea.getLongitude(),6);
+    doc["tLoop"] = status.tLoop;
+    doc["tMaxLoop"] = status.tMaxLoop;
+    doc["freeHeap"] = xPortGetFreeHeapSize();
+    doc["fHeapMin"] = xPortGetMinimumEverFreeHeapSize();
+
+    /*
+    doc["vBatt"] = String((float)status.vBatt/1000.,2);
+    doc["gpsFix"] = status.GPS_Fix;
+    doc["gpsNumSat"] = status.GPS_NumSat;
+    doc["gpslat"] = String(status.GPS_Lat,6);
+    doc["gpslon"] = String(status.GPS_Lon,6);
+    doc["gpsAlt"] = String(status.GPS_alt,1);
+    doc["gpsSpeed"] = String(status.GPS_speed,2);
+    doc["climbrate"] = String(status.ClimbRate,1);
+    doc["fanetTx"] = status.fanetTx;
+    doc["fanetRx"] = status.fanetRx;
+    doc["tLoop"] = status.tLoop;
+    doc["tMaxLoop"] = status.tMaxLoop;
+    */
+    serializeJson(doc, msg_buf);
+    for (int i = 0;i <MAXCLIENTS;i++){
+      if (clientPages[i] == 1){
+        log_d("Sending to [%u]: %s", i, msg_buf);
+        webSocket.sendTXT(i, msg_buf);
+      }
+    }
+    counter++;
+  }
+  if (restartNow){
+    if ((tAct - tRestart) >= 1000){
+      ESP.restart();
+    }    
+  }else{
+    tRestart = tAct;
+  }
 }

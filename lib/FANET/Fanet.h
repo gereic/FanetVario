@@ -11,6 +11,7 @@
 #include <HardwareSerial.h>
 #include <string.h>
 #include <nmeaout.h>
+#include <xmodem.h>
 
 #define FANET_MAXRECBUFFER 255
 #define FANET_DEBUG
@@ -51,6 +52,7 @@ typedef struct {
 	uint8_t hour;
 	uint8_t minute;
 	uint8_t second;
+  float turnrate;
 } stateData;
 
 class Fanet {
@@ -69,8 +71,10 @@ public:
     void writeTrackingData2FANET(trackingData *tData);
     void printFanetData(trackingData tData);
     void writeStateData2FANET(stateData *tData);
+    int updateModule(String filename);
     String getAircraftType(eFanetAircraftType type);
     bool initOk(void);
+    String sVersion;
 protected:
     String FlarmExp;
     HardwareSerial *pFanetSerial;  
@@ -97,10 +101,12 @@ protected:
     void resetModule();
     void sendPilotName(uint32_t tAct);
     void getMyID(String line);
+    void getVersion(String line);
     void getFAX(String line);
     char lineBuffer[FANET_MAXRECBUFFER];
     uint8_t recBufferIndex;
     trackingData _myData;
+    bool bDGVOk;
     bool bFNAOk;
     bool bFNCOk;
     bool bDGPOk;

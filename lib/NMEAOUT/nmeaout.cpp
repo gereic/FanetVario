@@ -78,15 +78,18 @@ bool NmeaOut::begin(eNMEAOUTPUT dev,String udpIP,uint16_t udpPort,String hostnam
 }
 
 void NmeaOut::write(String s){
+    sData += s;
     unsigned int bufferSize = s.length();
     uint8_t data[bufferSize+1];
     switch (_outputDevice)
     {
     case eNMEAOUTPUT::UDP_OUT:
-        udp.beginPacket(_udpIP.c_str(),_udpPort);
-        s.toCharArray((char *)data,bufferSize+1);
-        udp.write(&data[0],bufferSize );
-        udp.endPacket();  
+        if (WiFi.status() == WL_CONNECTED){
+            udp.beginPacket(_udpIP.c_str(),_udpPort);
+            s.toCharArray((char *)data,bufferSize+1);
+            udp.write(&data[0],bufferSize );
+            udp.endPacket(); 
+        } 
         break; 
 
     case eNMEAOUTPUT::BLUETOOTH_OUT:   
@@ -112,7 +115,12 @@ void NmeaOut::write(String s){
         break;
     }
 
+}
 
+String NmeaOut::getSendData(void){
+    String sRet = sData;
+    sData = "";
+    return sRet;
 }
 
 void NmeaOut::run(void){

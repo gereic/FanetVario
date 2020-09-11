@@ -4,6 +4,8 @@
 
 #include <Arduino.h>
 #include <WiFiUdp.h>
+#include <WiFi.h>
+
 //#include <BluetoothSerial.h> //Header File for Serial Bluetooth, will be added by default into Arduino
 
 /*
@@ -71,11 +73,13 @@ public:
     bool begin(eNMEAOUTPUT dev,String udpIP,uint16_t udpPort,String hostname);
     void write(String s);
     void run(void); //has to be called cyclic
+    String getSendData(void);
 protected:
     eNMEAOUTPUT _outputDevice = eNMEAOUTPUT::SERIAL_OUT;
     String _udpIP = "";
     uint16_t _udpPort = 10110;
     WiFiUDP udp;
+    String sData = "";
     //BluetoothSerial SerialBT;
     //String sSend;
 

@@ -7,7 +7,7 @@
 
 extern SettingsData setting;
 
-void load_configFile(void);
-void write_configFile(void);
+void load_configFile(SettingsData* pSetting);
+void write_configFile(SettingsData* pSetting);
 
 #endif

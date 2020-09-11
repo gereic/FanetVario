@@ -85,13 +85,24 @@ void Fanet::initModule(uint32_t tAct){
     switch (initCount)
     {
     case 0:
-        bFNAOk = false;
-        //Serial.print("#FNA\n");
-        pFanetSerial->print("#FNA\n"); //get module-addr
+        bDGVOk = false;
+        pFanetSerial->print("#DGV\n"); //get module-version
         timeout = tAct; //reset timeout
         initCount++;
         break;
     case 1:
+        if (btimeout){
+            initCount--; //back on step ask module again
+        }
+        if (bDGVOk){
+            bFNAOk = false;
+            //Serial.print("#FNA\n");
+            pFanetSerial->print("#FNA\n"); //get module-addr
+            timeout = tAct; //reset timeout
+            initCount++;
+        }
+        break;
+    case 2:
         if (btimeout){
             initCount--; //back on step ask module again
         }
@@ -102,7 +113,7 @@ void Fanet::initModule(uint32_t tAct){
             initCount++;
         }
         break;
-    case 2:
+    case 3:
         if (btimeout){
             initCount--; //back on step ask module again
         }
@@ -114,7 +125,7 @@ void Fanet::initModule(uint32_t tAct){
             initCount++;
         }
         break;
-    case 3:
+    case 4:
         if (btimeout){
             initCount--; //back on step ask module again
         }
@@ -126,7 +137,7 @@ void Fanet::initModule(uint32_t tAct){
             initCount++;
         }
         break;
-    case 4:
+    case 5:
         if (btimeout){
             initCount--; //back on step ask module again
         }
@@ -138,7 +149,7 @@ void Fanet::initModule(uint32_t tAct){
             initCount++;
         }
         break;
-    case 5:
+    case 6:
         if (btimeout){
             initCount--; //back on step ask module again
         }
@@ -185,6 +196,11 @@ void Fanet::getMyID(String line){
 
 }
 
+void Fanet::getVersion(String line){
+    sVersion = line;
+    log_i("Version=%s",sVersion.c_str());
+}
+
 void Fanet::getFAX(String line){
     String s1;
     int ret = 0;
@@ -211,6 +227,8 @@ bool Fanet::initOk(void){
 void Fanet::DecodeLine(String line){
     //Serial.println(line);
     if (line.startsWith("#DGV")){
+        getVersion(line.substring(5));
+        bDGVOk = true;
     }else if (line.startsWith("#FNA")){
         getMyID(line);
         bFNAOk = true;
@@ -237,6 +255,13 @@ String Fanet::getMyDevId(void){
     return _myData.DevId;
 }
 
+int Fanet::updateModule(String filename){
+    int ret =  xmodem_transmit(pFanetSerial, filename.c_str(),_ResetPin);
+    SPIFFS.remove(filename.c_str()); // remove file
+    log_i("ret=%d",ret);
+    return ret;
+}
+
 void Fanet::run(void){    
     uint32_t tAct = millis();
     initModule(tAct);
@@ -247,6 +272,7 @@ void Fanet::run(void){
             //Serial.print("length=");Serial.println(recBufferIndex);
             lineBuffer[recBufferIndex] = 0; //zero-termination
             //Serial.println(lineBuffer);
+            //log_i("%s",lineBuffer);
             DecodeLine(String(lineBuffer));    
             recBufferIndex = 0;
         }else{
@@ -285,12 +311,18 @@ void Fanet::CheckReceivedPackage(String line){
     //Serial.println(ret);
     //Serial.print("src_manufacturer=");
     //Serial.println(s1);
+    
+    if (s1.length() < 2) s1 = "0" + s1;
+    devId = s1;
+    /*
     if (s1 == "7"){
         devId = "F1";
     }else{
         devId = s1;
     }
+    */
     ret = getStringValue(line,&s1,ret,",",",");
+    if (s1.length() < 4) s1 = "0" + s1;
     devId += s1;
     //Serial.print("src_id=");
     //Serial.println(s1);
@@ -320,8 +352,13 @@ void Fanet::CheckReceivedPackage(String line){
             getTrackingInfo(payload,uint16_t(x));                
         }else{
             Serial.println("length not ok");
-        }
+        }        
         //Serial.println(line); //directly to serial out
+        /*
+        if (pNmeaOut != NULL){
+            pNmeaOut->write(line + "\r\n"); //directly to serial out
+        }
+        */
     }else if ((msgType == 2) || (msgType == 3) || (msgType == 4)){
         //Type 2 --> Device-Name
         //Type 3 --> MSG
@@ -449,9 +486,9 @@ int Fanet::getStringValue(String s,String *sRet,unsigned int fromIndex,String ke
   return pos2;
 }
 void Fanet::writeStateData2FANET(stateData *tData){
-    String sFNS = "#FNS " + String(tData->lat,4) + ","
-                 + String(tData->lon,4) + ","
-                 + String(tData->altitude,0) + "," 
+    String sFNS = "#FNS " + String(tData->lat,6) + ","
+                 + String(tData->lon,6) + ","
+                 + String(tData->altitude,3) + "," 
                  + String(int(tData->speed)) + "," 
                  + String(tData->climb,2) + "," 
                  + String(tData->heading,2) + "," 
@@ -461,8 +498,11 @@ void Fanet::writeStateData2FANET(stateData *tData){
                  + String(tData->hour) +  "," 
                  + String(tData->minute) +  "," 
                  + String(tData->second) + "," 
-                 + String(tData->geoIdAltitude,0) + ",0\n"; //todo check geoid-height
+                 + String(tData->geoIdAltitude,3) + ",0\n";
+//                 + String(tData->geoIdAltitude,3) + ","
+//                 + String(tData->turnrate,1) + "\n"; //todo check geoid-height
     //Serial.println(sFNS);
+    //log_i("%s",sFNS.c_str());
     _myData.altitude = tData->altitude;
     _myData.climb = tData->climb;
     _myData.heading = tData->heading;
