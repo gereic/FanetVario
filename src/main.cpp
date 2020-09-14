@@ -20,13 +20,7 @@
 
 /***************  Configuration Begin *******************/
 
-//#define IOV2 //define IO-Version for Skytraxx Pene
-
-#define CON2WIFI
-
 String host_name = "";
-
-#define OTAPROGRAMMING
 
 /***************  Configuration End *********************/
 
@@ -284,11 +278,7 @@ void setup() {
   xTaskCreatePinnedToCore(taskBackGround, "taskBackGround", 6500, NULL, 5, &xHandleBackground, ARDUINO_RUNNING_CORE1); //background task
   xTaskCreatePinnedToCore(taskBluetooth, "taskBluetooth", 4096, NULL, 7, &xHandleBluetooth, ARDUINO_RUNNING_CORE1);
 
-#ifdef IOV2
   fanet.begin(1,17,16,5); //Hardwareserial, rxPin, txPin, Reset-Pin
-#else
-  fanet.begin(1,16,17,15); //Hardwareserial, rxPin, txPin, Reset-Pin
-#endif  
   while (!fanet.initOk()){
     fanet.run(); //call run to get DevId
   }
@@ -453,15 +443,6 @@ void loop() {
   }
   nmeaout.run();
   sendData2Client(nmeaout.getSendData());
-  /*
-  if (WifiConnectOk){
-    //server.handleClient();
-    Web_loop();
-    #ifdef OTAPROGRAMMING
-    ArduinoOTA.handle();
-    #endif
-  }
-  */
 }
 
 void taskBackGround(void *pvParameters){
