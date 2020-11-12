@@ -315,6 +315,7 @@ void BlinkLed(uint32_t tAct){
 void sendFanetStatus(){
   static long oldAlt = 0;
   static float oldTurnrate = 0.0;
+  if (!blueFly.nmea.isValid()) return;
   stateData tFanetData;  
   tFanetData.lat = blueFly.nmea.getLatitude() / 1000000.;
   tFanetData.lon = blueFly.nmea.getLongitude() / 1000000.;

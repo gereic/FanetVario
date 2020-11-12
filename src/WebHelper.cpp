@@ -310,8 +310,8 @@ void Web_loop(void){
     doc["counter"] = counter;
     doc["gpsFix"] = String(blueFly.nmea.isValid());
     doc["gpsNumSat"] = String(blueFly.nmea.getNumSatellites());
-    doc["gpslat"] = String(blueFly.nmea.getLatitude(),6);
-    doc["gpslon"] = String(blueFly.nmea.getLongitude(),6);
+    doc["gpslat"] = String(blueFly.nmea.getLatitude() / 1000000.,6);
+    doc["gpslon"] = String(blueFly.nmea.getLongitude() / 1000000.,6);
     doc["tLoop"] = status.tLoop;
     doc["tMaxLoop"] = status.tMaxLoop;
     doc["freeHeap"] = xPortGetFreeHeapSize();

@@ -79,6 +79,7 @@ void Fanet::resetModule(){
 void Fanet::initModule(uint32_t tAct){
     static uint32_t timeout = millis();
     bool btimeout = false;
+    String s = "";
     if ((tAct - timeout) >= 1000){
         btimeout = true;
     }
@@ -86,7 +87,9 @@ void Fanet::initModule(uint32_t tAct){
     {
     case 0:
         bDGVOk = false;
-        pFanetSerial->print("#DGV\n"); //get module-version
+        s = "#DGV\n";
+        Serial.print(s.c_str());
+        pFanetSerial->print(s.c_str()); //get module-version
         timeout = tAct; //reset timeout
         initCount++;
         break;
@@ -96,8 +99,9 @@ void Fanet::initModule(uint32_t tAct){
         }
         if (bDGVOk){
             bFNAOk = false;
-            //Serial.print("#FNA\n");
-            pFanetSerial->print("#FNA\n"); //get module-addr
+            s = "#FNA\n";
+            Serial.print(s.c_str());
+            pFanetSerial->print(s.c_str()); //get module-version
             timeout = tAct; //reset timeout
             initCount++;
         }
@@ -108,7 +112,9 @@ void Fanet::initModule(uint32_t tAct){
         }
         if (bFNAOk){
             bFAXOk = false;
-            pFanetSerial->print("#FAX\n"); //flarm expiration
+            s = "#FAX\n";
+            Serial.print(s.c_str());
+            pFanetSerial->print(s.c_str());
             timeout = tAct; //reset timeout
             initCount++;
         }
@@ -119,8 +125,9 @@ void Fanet::initModule(uint32_t tAct){
         }
         if (bFAXOk){
             bFNCOk = false;
-            //Serial.print("#FNC 1,1\n");
-            pFanetSerial->print("#FNC 1,1\n"); //PG, online tracking
+            s = "#FNC 1,1\n";
+            Serial.print(s.c_str());
+            pFanetSerial->print(s.c_str());
             timeout = tAct; //reset timeout
             initCount++;
         }
@@ -131,8 +138,10 @@ void Fanet::initModule(uint32_t tAct){
         }
         if (bFNCOk){
             bDGPOk = false;
-            //Serial.print("#DGP 1\n");
-            pFanetSerial->print("#DGP 1\n"); //Enable receiver
+            //Serial.print("#FAP 1\n");
+            s = "#DGP 1\n";
+            Serial.print(s.c_str());
+            pFanetSerial->print(s.c_str()); //Enable receiver
             timeout = tAct; //reset timeout
             initCount++;
         }
@@ -143,8 +152,10 @@ void Fanet::initModule(uint32_t tAct){
         }
         if (bDGPOk){
             bFAPOk = false;
-            //Serial.print("#FAP 1\n");
-            pFanetSerial->print("#FAP 1\n"); //Enable FLARM
+            //Serial.print("#DGP 1\n");
+            s = "#FAP 1\n";
+            Serial.print(s.c_str());
+            pFanetSerial->print(s.c_str()); //Enable FLARM
             timeout = tAct; //reset timeout
             initCount++;
         }
@@ -155,6 +166,9 @@ void Fanet::initModule(uint32_t tAct){
         }
         if (bFAPOk){
             initCount = 100; //we are ready !!
+            s = "#FAP\n";
+            Serial.print(s.c_str());
+            pFanetSerial->print(s.c_str()); //Enable FLARM
             //Serial.println("**** INIT OK ****");
             bInitOk = true;
         }
@@ -269,9 +283,7 @@ void Fanet::run(void){
         if (recBufferIndex >= FANET_MAXRECBUFFER) recBufferIndex = 0; //Buffer overrun
         lineBuffer[recBufferIndex] = pFanetSerial->read();
         if (lineBuffer[recBufferIndex] == '\n'){
-            //Serial.print("length=");Serial.println(recBufferIndex);
             lineBuffer[recBufferIndex] = 0; //zero-termination
-            //Serial.println(lineBuffer);
             //log_i("%s",lineBuffer);
             DecodeLine(String(lineBuffer));    
             recBufferIndex = 0;
@@ -488,19 +500,19 @@ int Fanet::getStringValue(String s,String *sRet,unsigned int fromIndex,String ke
 void Fanet::writeStateData2FANET(stateData *tData){
     String sFNS = "#FNS " + String(tData->lat,6) + ","
                  + String(tData->lon,6) + ","
-                 + String(tData->altitude,3) + "," 
-                 + String(int(tData->speed)) + "," 
-                 + String(tData->climb,2) + "," 
-                 + String(tData->heading,2) + "," 
+                 + String(tData->altitude,1) + "," 
+                 + String(tData->speed,1) + "," 
+                 + String(tData->climb,1) + "," 
+                 + String(tData->heading,1) + "," 
                  + String(tData->year) + "," 
                  + String(tData->month-1) + "," 
                  + String(tData->day)+ "," 
                  + String(tData->hour) +  "," 
                  + String(tData->minute) +  "," 
-                 + String(tData->second) + "," 
-                 + String(tData->geoIdAltitude,3) + ",0\n";
-//                 + String(tData->geoIdAltitude,3) + ","
-//                 + String(tData->turnrate,1) + "\n"; //todo check geoid-height
+                 + String(tData->second) + "," //"\n";  //"," 
+//                 + String(tData->geoIdAltitude,3) + ",0\n";
+                 + String(tData->geoIdAltitude,3) + ","
+                 + String(tData->turnrate,1) + "\n"; //todo check geoid-height
     //Serial.println(sFNS);
     //log_i("%s",sFNS.c_str());
     _myData.altitude = tData->altitude;
