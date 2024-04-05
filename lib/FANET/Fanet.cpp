@@ -47,26 +47,26 @@ void Fanet::setAircraftType(eFanetAircraftType type){
 }
 
 void Fanet::sendPilotName(uint32_t tAct){
-    static uint32_t tPilotName = millis();
-    if (((tAct - tPilotName) >= 240000) && (bInitOk)){
-        tPilotName = tAct;
-        if (_PilotName.length() > 0){
-            String sSend = "#FNT 2,00,0000,1,0,";
-            uint8_t arSend[32];
-            uint8_t i;
-            uint8_t myLen = _PilotName.length();
-            _PilotName.toCharArray((char *)&arSend[0],sizeof(arSend));
-            sSend += getHexFromByte(myLen) + ",";
-            for (i = 0 ;i < myLen; i++){
-                sSend += getHexFromByte(arSend[i]);
-            }   
-            sSend += "\n"; 
-            //Serial.print("len=");Serial.println(myLen);
-            //Serial.println("sending fanet-name");
-            //Serial.print(sSend);
-            pFanetSerial->print(sSend);
-        }
-    }
+    static uint32_t tPilotName = millis() - NAME_SEND_TIME + 5000;
+    if (!bInitOk){
+        tPilotName = tAct - NAME_SEND_TIME + 5000;
+        return;
+    } 
+    if ((tAct - tPilotName) < NAME_SEND_TIME) return;
+    if (_PilotName.length() <= 0) return;
+    tPilotName = tAct;
+    String sSend = "#FNT 2,00,0000,1,0,";
+    uint8_t arSend[32];
+    uint8_t i;
+    uint8_t myLen = _PilotName.length();
+    _PilotName.toCharArray((char *)&arSend[0],sizeof(arSend));
+    sSend += getHexFromByte(myLen) + ",";
+    for (i = 0 ;i < myLen; i++){
+        sSend += getHexFromByte(arSend[i]);
+    }   
+    sSend += "\n"; 
+    //log_i("sending fanet-name len=%d msg=%s",myLen,sSend.c_str());
+    pFanetSerial->print(sSend);
 }
 
 void Fanet::resetModule(){

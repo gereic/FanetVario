@@ -15,6 +15,7 @@
 
 #define FANET_MAXRECBUFFER 255
 #define FANET_DEBUG
+#define NAME_SEND_TIME 240000
 
 enum class eFanetAircraftType {
   UNKNOWN = 0,

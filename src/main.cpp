@@ -38,7 +38,7 @@ uint8_t SerialRecBufferIndex;
 
 BlueFly blueFly;
 Flarm flarm;
-bool ppsTriggered;
+volatile bool ppsTriggered;
 struct SettingsData setting;
 struct StatusData status;
 bool WebUpdateRunning = false;
@@ -128,6 +128,7 @@ void printSettings(){
 }
 
 void IntPPS(){
+  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
   ppsTriggered = true;
 }
 
@@ -144,6 +145,49 @@ static uint32_t ESP32_getChipId()
 */
 
 void WiFiEvent(WiFiEvent_t event){
+  switch(event){
+    case ARDUINO_EVENT_WIFI_READY:
+      log_i("wifi ready");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_START:
+      log_i("station start");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_STOP:
+      log_i("station stop");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+      log_i("station connected to AP");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+      log_i("station lost connection to AP");
+      break; 
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+      status.myIP = WiFi.localIP().toString();
+      log_i("station got IP from connected AP IP:%s",status.myIP.c_str());
+      break;
+    case ARDUINO_EVENT_WIFI_STA_LOST_IP:          
+      log_i("STA LOST IP");
+      break;
+    case ARDUINO_EVENT_WIFI_AP_START:
+      log_i("AP started. IP: [%s]", WiFi.softAPIP().toString().c_str());
+      break;
+    case ARDUINO_EVENT_WIFI_AP_STOP:
+      log_i("soft-AP stop");
+      break;
+    case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
+      log_i("a station connected to ESP32 soft-AP");
+      break;
+    case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
+      log_i("a station disconnected from ESP32 soft-AP");
+      break;
+    case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
+      log_i("soft-AP assign an IP to a connected station");
+      break;
+    default:
+      log_e("Unhandled WiFi Event: %d", event );
+      break;
+  }
+  /*
   switch(event){
     case SYSTEM_EVENT_AP_START:
       log_d("AP started. IP: [%s]", WiFi.softAPIP().toString().c_str() );
@@ -170,78 +214,156 @@ void WiFiEvent(WiFiEvent_t event){
       log_d("Unhandled WiFi Event: %d", event );
       break;
   }
+  */
 }
 
-
+void setupSoftAp(){
+  log_i("Set soft-AP settings");
+  WiFi.softAP(host_name.c_str(), setting.wifi.appw.c_str());
+  WiFi.softAPConfig(local_IP, gateway, subnet);
+}
 
 void setupWifi(){
   while(host_name.length() == 0){
     delay(100); //wait until we have the devid
   }
   status.wifiStat = 0;
-  WiFi.mode(WIFI_OFF);
-  //delay(500);
+  //setting.wifi.ssid = "WLAN_EICHLER";
+  //setting.wifi.password = "magest172";
+  WiFi.disconnect(true,true);
+  WiFi.mode(WIFI_MODE_NULL);  
   WiFi.persistent(false);
   WiFi.onEvent(WiFiEvent);
-  log_i("Setting soft-AP ... ");
-  //if (WiFi.softAP(host_name.c_str(), setting.appw.c_str(),rand() % 12 + 1,0,2)){
-  if (WiFi.softAP(host_name.c_str(), setting.wifi.appw.c_str())){
-    log_i("Ready");
-  }else{
-    log_i("Failed!");
-  }
-  delay(10);
-  log_i("Setting soft-AP configuration ... ");
-  if(WiFi.softAPConfig(local_IP, gateway, subnet)){
-    log_i("Ready");
-  }else{
-    log_i("Failed!");
-  }
-  delay(10);
-
-  log_i("hostname=%s",host_name.c_str());
-  WiFi.setHostname(host_name.c_str());
-  //now configure access-point
-  //so we have wifi connect and access-point at same time
-  //we connecto to wifi
+  WiFi.config(IPADDR_ANY, IPADDR_ANY, IPADDR_ANY,IPADDR_ANY,IPADDR_ANY); // call is only a workaround for bug in WiFi class
+  WiFi.setHostname(host_name.c_str());  
   if (setting.wifi.connect != WIFI_CONNECT_NONE){
     //esp_wifi_set_auto_connect(true);
     log_i("Try to connect to WiFi ...");
     WiFi.status();
-    WiFi.mode(WIFI_MODE_APSTA);
-    //WiFi.mode(WIFI_STA);
+    WiFi.mode(WIFI_MODE_STA);
+    //setupSoftAp();
     if ((WiFi.SSID() != setting.wifi.ssid || WiFi.psk() != setting.wifi.password)){
       // ... Try to connect to WiFi station.
       WiFi.begin(setting.wifi.ssid.c_str(), setting.wifi.password.c_str());
-      delay(2000);
     } else {
       // ... Begin with sdk config.
       WiFi.begin();
-      delay(2000);
     }
-    log_i("Wait for WiFi connection.");
-    uint32_t wifiTimeout = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - wifiTimeout < 10000) {
-      delay(500);
-    }    
-  }
-  status.wifiStat = 1;
+    //WiFi.setTxPower(WIFI_POWER_19_5dBm); //maximum wifi-power
+    uint32_t tStart = millis();    
+    while(WiFi.status() != WL_CONNECTED){
+      if (timeOver(millis(),tStart,30000)){ //wait max. 30seconds
+        break;
+      }
+      delay(100);
+    }
+    if (WiFi.status() == WL_CONNECTED){
+      log_i("wifi connected");
+    }else{
+      log_i("wifi not connected --> switch on AP");
+      WiFi.disconnect();
+      WiFi.mode(WIFI_MODE_AP); //start AP
+      setupSoftAp();
+    }  
+  }else{
+    WiFi.mode(WIFI_MODE_AP);
+    setupSoftAp();
+  }  
+  log_i("hostname=%s",host_name.c_str());  
   log_i("my APIP=%s",local_IP.toString().c_str());
+  if((WiFi.getMode() & WIFI_MODE_STA)){
+    WiFi.setSleep(false); //disable power-save-mode !! will increase ping-time
+    WiFi.setTxPower(WIFI_POWER_19_5dBm); //maximum wifi-power
+  }
+
+  status.wifiStat = 1;
   Web_setup();
+}
+
+void scanNetworks(){
+  // Set WiFi to station mode and disconnect from an AP if it was previously connected.
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(100);
+  while(1){
+    Serial.println("Scan start");
+ 
+    // WiFi.scanNetworks will return the number of networks found.
+    int n = WiFi.scanNetworks();
+    Serial.println("Scan done");
+    if (n == 0) {
+        Serial.println("no networks found");
+    } else {
+        Serial.print(n);
+        Serial.println(" networks found");
+        Serial.println("Nr | SSID                             | RSSI | CH | Encryption");
+        for (int i = 0; i < n; ++i) {
+            // Print SSID and RSSI for each network found
+            Serial.printf("%2d",i + 1);
+            Serial.print(" | ");
+            Serial.printf("%-32.32s", WiFi.SSID(i).c_str());
+            Serial.print(" | ");
+            Serial.printf("%4d", WiFi.RSSI(i));
+            Serial.print(" | ");
+            Serial.printf("%2d", WiFi.channel(i));
+            Serial.print(" | ");
+            switch (WiFi.encryptionType(i))
+            {
+            case WIFI_AUTH_OPEN:
+                Serial.print("open");
+                break;
+            case WIFI_AUTH_WEP:
+                Serial.print("WEP");
+                break;
+            case WIFI_AUTH_WPA_PSK:
+                Serial.print("WPA");
+                break;
+            case WIFI_AUTH_WPA2_PSK:
+                Serial.print("WPA2");
+                break;
+            case WIFI_AUTH_WPA_WPA2_PSK:
+                Serial.print("WPA+WPA2");
+                break;
+            case WIFI_AUTH_WPA2_ENTERPRISE:
+                Serial.print("WPA2-EAP");
+                break;
+            case WIFI_AUTH_WPA3_PSK:
+                Serial.print("WPA3");
+                break;
+            case WIFI_AUTH_WPA2_WPA3_PSK:
+                Serial.print("WPA2+WPA3");
+                break;
+            case WIFI_AUTH_WAPI_PSK:
+                Serial.print("WAPI");
+                break;
+            default:
+                Serial.print("unknown");
+            }
+            Serial.println();
+            delay(10);
+        }
+    }
+    Serial.println("");
+ 
+    // Delete the scan result to free memory for code below.
+    WiFi.scanDelete();
+    delay(5000);    
+  }
+
 }
 
 void setup() {
   // put your setup code here, to run once:
   // Set pin mode
   pinMode(LED_BUILTIN,OUTPUT);
+  digitalWrite(LED_BUILTIN,HIGH);
+  delay(500);
+  digitalWrite(LED_BUILTIN,LOW);
   ppsTriggered = false;
   pinMode(PPS_PIN,INPUT);
   attachInterrupt(digitalPinToInterrupt(PPS_PIN), IntPPS, FALLING);
 
   Serial.begin(115200);
-
-
-    log_e("error");
   
   log_i("SDK-Version=%s",ESP.getSdkVersion());
   log_i("CPU-Speed=%d",ESP.getCpuFreqMHz());
@@ -250,6 +372,9 @@ void setup() {
   log_i("Free PSRAM: %d", ESP.getFreePsram());
   log_i("compiled at %s",compile_date);
   log_i("current free heap: %d, minimum ever free heap: %d", xPortGetFreeHeapSize(), xPortGetMinimumEverFreeHeapSize());
+  log_i("Wifi-Mac-Adr=%s",WiFi.macAddress().c_str());
+
+  //scanNetworks();
 
   //esp_sleep_wakeup_cause_t reason = print_wakeup_reason(); //print reason for wakeup
   //print_wakeup_reason(); //print reason for wakeup
@@ -315,7 +440,9 @@ void BlinkLed(uint32_t tAct){
 void sendFanetStatus(){
   static long oldAlt = 0;
   static float oldTurnrate = 0.0;
-  if (!blueFly.nmea.isValid()) return;
+  
+  //if (!blueFly.nmea.isValid()) return;
+  if (!blueFly.nmea.isNewMsgValid()) return;
   stateData tFanetData;  
   tFanetData.lat = blueFly.nmea.getLatitude() / 1000000.;
   tFanetData.lon = blueFly.nmea.getLongitude() / 1000000.;
@@ -345,6 +472,7 @@ void sendFanetStatus(){
   tFanetData.turnrate = tFanetData.heading - oldTurnrate;
   oldTurnrate = tFanetData.heading;
   fanet.writeStateData2FANET(&tFanetData);
+  //Serial.println("sendFanetMsg");
 }
 
 eFlarmAircraftType Fanet2FlarmAircraft(eFanetAircraftType aircraft){
@@ -394,7 +522,7 @@ void loop() {
   tLoop = tAct;
   if (status.tMaxLoop < status.tLoop) status.tMaxLoop = status.tLoop;
 
-  BlinkLed(tAct);
+  //BlinkLed(tAct);
   fanet.run();
   if (status.UpdateFanetModule){
     if (fanet.updateModule("/fanet.xlb") == 0){
@@ -437,13 +565,15 @@ void loop() {
     SerialRecBufferIndex = 0; //reset Buffer
   }
   
+
   if (ppsTriggered){
     ppsTriggered = false;
-    //log_i("PPS triggered");
-    sendFanetStatus();
+    //Serial.println("**************** PPS triggered *******************");
+    blueFly.nmea.clearNewMsgValid(); //clear flag msg is valid
   }
   nmeaout.run();
   sendData2Client(nmeaout.getSendData());
+  sendFanetStatus();
 }
 
 void taskBackGround(void *pvParameters){

@@ -207,6 +207,7 @@ void MicroNMEA::clear(void)
 	_numSat = 0;
 	_hdop = 255;
 	_isValid = false;
+	_isNewMsgValid = 0;
 	_latitude = 999000000L;
 	_longitude = 999000000L;
 	_altitude = _geoidAlt = _speed = _course = LONG_MIN;
@@ -311,7 +312,7 @@ bool MicroNMEA::processGGA(const char *s)
 			_longitude *= -1;
 		s += 2; // Skip E/W and comma
 	}
-	_isValid = (*s == '1' || *s == '2');
+	_isValid = (*s == '1' || *s == '2');	
 	s += 2; // Skip position fix flag and comma
 	_numSat = parseFloat(s, 0, &s);
 	_hdop = parseFloat(s, 1, &s);
@@ -320,6 +321,10 @@ bool MicroNMEA::processGGA(const char *s)
 	_geoidAlt = parseFloat(s, 3, &s);
 	_altitudeValid = true;
 	// That's all we care about
+	if (_isValid) _isNewMsgValid |= 0x01;
+	//Serial.print("GGA valid=");
+	//Serial.println(_isNewMsgValid);
+
 	return true;
 }
 
@@ -354,5 +359,8 @@ bool MicroNMEA::processRMC(const char* s)
 	_course = parseFloat(s, 3, &s);
 	s = parseDate(s);
 	// That's all we care about
+	if (_isValid) _isNewMsgValid |= 0x02;
+	//Serial.print("RMC valid=");
+	//Serial.println(_isNewMsgValid);
 	return true;
 }

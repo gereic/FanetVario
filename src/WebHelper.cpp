@@ -60,6 +60,7 @@ void onWebSocketEvent(uint8_t client_num,
           doc["myDevId"] = setting.myDevId;
           doc["compiledate"] = String(compile_date);
           doc["fVersion"] = setting.fanetVersion;
+          doc["fExp"] = setting.FlarmExp;
           serializeJson(doc, msg_buf);
           webSocket.sendTXT(client_num, msg_buf);
         }else if (clientPages[client_num] == 10){ //full settings
@@ -301,6 +302,7 @@ void Web_loop(void){
   static uint16_t counter = 0;
   static uint32_t tRestart = millis();
   uint32_t tAct = millis();
+  long alt = 0;
   // Look for and handle WebSocket data
   webSocket.loop();
   if ((tAct - tLife) >= 500){
@@ -312,6 +314,8 @@ void Web_loop(void){
     doc["gpsNumSat"] = String(blueFly.nmea.getNumSatellites());
     doc["gpslat"] = String(blueFly.nmea.getLatitude() / 1000000.,6);
     doc["gpslon"] = String(blueFly.nmea.getLongitude() / 1000000.,6);
+    blueFly.nmea.getAltitude(alt);
+    doc["gpsalt"] = String(alt / 1000.,2);
     doc["tLoop"] = status.tLoop;
     doc["tMaxLoop"] = status.tMaxLoop;
     doc["freeHeap"] = xPortGetFreeHeapSize();

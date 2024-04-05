@@ -28,7 +28,8 @@ int BlueFly::getStringValue(String s,String *sRet,unsigned int fromIndex,String 
 
 bool BlueFly::begin(uint8_t SerialNumber,uint8_t RxPin, uint8_t TxPin,NmeaOut *_pNmeaOut){
     pBlueFlySerial = new HardwareSerial(SerialNumber);
-    pBlueFlySerial->begin(115200, SERIAL_8N1, RxPin, TxPin);
+    //pBlueFlySerial->begin(115200, SERIAL_8N1, RxPin, TxPin);
+    pBlueFlySerial->begin(9600, SERIAL_8N1, RxPin, TxPin);
     recBufferIndex = 0;
     nmea.setBuffer(nmeaBuffer, sizeof(nmeaBuffer));
     pNmeaOut = _pNmeaOut;
@@ -87,16 +88,18 @@ void BlueFly::run(void){
         if (nmea.process(lineBuffer[recBufferIndex])){ //process char
             nmeaCount ++;
         };
-        if (lineBuffer[recBufferIndex] == '\n'){
-            //Serial.print("length=");Serial.println(recBufferIndex);
-            lineBuffer[recBufferIndex] = 0; //zero-termination
-            checkLine(String(lineBuffer) + "\r\n");
-            pNmeaOut->write(String(lineBuffer) + "\r\n");
-            recBufferIndex = 0;
-        }else{
-            if (lineBuffer[recBufferIndex] != '\r'){
-                recBufferIndex++;
+        if ((lineBuffer[recBufferIndex] == '\n') || (lineBuffer[recBufferIndex] == '\r')){
+            if (recBufferIndex > 0){
+                //Serial.print("length=");Serial.println(recBufferIndex);
+                lineBuffer[recBufferIndex] = 0; //zero-termination
+                checkLine(String(lineBuffer) + "\r\n");
+                pNmeaOut->write(String(lineBuffer) + "\r\n");
+                recBufferIndex = 0;
             }
+        }else{
+        //    if (lineBuffer[recBufferIndex] != '\r'){
+                recBufferIndex++;
+        //    }
         }        
         //String line = pBlueFlySerial->readStringUntil('\n');
         //Serial.println(line);

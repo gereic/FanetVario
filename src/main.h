@@ -6,7 +6,7 @@
 #ifndef __MAIN_H__
 #define __MAIN_H__
 
-#define VERSION "V1.0.0"
+#define VERSION "V2.0.0"
 #define APPNAME "GXFANET"
 
 #define BLE_LOW_HEAP 10000

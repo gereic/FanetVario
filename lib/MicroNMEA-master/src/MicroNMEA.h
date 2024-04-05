@@ -66,6 +66,19 @@ public:
 		return _isValid;
 	}
 
+	void clearNewMsgValid(void){
+		_isNewMsgValid = 0;
+	}
+
+	bool isNewMsgValid(void) {
+		bool ret = false;
+		if (_isNewMsgValid == 3){
+			ret = true;
+			_isNewMsgValid = 0;
+		} 		
+		return ret;
+	}
+
 	// Latitude in millionths of a degree. North is positive.
 	long getLatitude(void) const {
 		return _latitude;
@@ -176,6 +189,7 @@ private:
 	// Variables parsed and kept for user
 	char _navSystem;
 	bool _isValid;
+	uint8_t _isNewMsgValid;
 	long _latitude, _longitude; // In millionths of a degree
 	long _altitude; // In millimetres
 	long _geoidAlt; // in millimetres
