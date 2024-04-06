@@ -423,7 +423,7 @@ void setup() {
   fanet.setNMEAOUT(&nmeaout); //Hardwareserial, rxPin, txPin, Reset-Pin)
   fanet.setPilotname(setting.PilotName); //set name of Pilot
   fanet.setAircraftType(setting.AircraftType);
-  blueFly.begin(2,23,22,&nmeaout); //Hardwareserial, rxPin, txPin
+  blueFly.begin(2,setting.baudRate,23,22,&nmeaout); //Hardwareserial, rxPin, txPin
   flarm.begin(&nmeaout);
 
 
@@ -437,12 +437,11 @@ void BlinkLed(uint32_t tAct){
   }
 }
 
-void sendFanetStatus(){
+bool sendFanetStatus(){
   static long oldAlt = 0;
-  static float oldTurnrate = 0.0;
-  
+  static float oldTurnrate = 0.0;  
   //if (!blueFly.nmea.isValid()) return;
-  if (!blueFly.nmea.isNewMsgValid()) return;
+  if (!blueFly.nmea.isNewMsgValid()) return false;
   stateData tFanetData;  
   tFanetData.lat = blueFly.nmea.getLatitude() / 1000000.;
   tFanetData.lon = blueFly.nmea.getLongitude() / 1000000.;
@@ -473,6 +472,7 @@ void sendFanetStatus(){
   oldTurnrate = tFanetData.heading;
   fanet.writeStateData2FANET(&tFanetData);
   //Serial.println("sendFanetMsg");
+  return true;
 }
 
 eFlarmAircraftType Fanet2FlarmAircraft(eFanetAircraftType aircraft){
@@ -509,6 +509,15 @@ void Fanet2FlarmData(trackingData *FanetData,FlarmtrackingData *FlarmDataData){
   FlarmDataData->speed = FanetData->speed;
 }
 
+bool timeOver(uint32_t tAct,uint32_t timestamp,uint32_t tTime){
+    uint32_t tDiff = tAct - timestamp;
+    if ((tDiff) >= tTime){
+        return true;
+    }else{
+        return false;
+    }
+}
+
 void loop() {
   trackingData tFanetData;  
   trackingData myFanetData;  
@@ -517,6 +526,7 @@ void loop() {
   uint32_t tAct = millis();
   static uint32_t tLoop = millis();
   static uint32_t tSerialRec = millis();
+  static uint32_t tPPS =  millis();
 
   status.tLoop = tAct - tLoop;
   tLoop = tAct;
@@ -570,10 +580,18 @@ void loop() {
     ppsTriggered = false;
     //Serial.println("**************** PPS triggered *******************");
     blueFly.nmea.clearNewMsgValid(); //clear flag msg is valid
+    tPPS = millis();
   }
   nmeaout.run();
-  sendData2Client(nmeaout.getSendData());
-  sendFanetStatus();
+  sendData2Client(nmeaout.getSendData());  
+
+  sendFanetStatus(); //~20ms after pps we have GPRMC and we send the message
+  /*
+  if (sendFanetStatus()){
+    log_i("timediff sendFlarm=%d",millis()-tPPS); //~20ms
+  }
+  */
+
 }
 
 void taskBackGround(void *pvParameters){

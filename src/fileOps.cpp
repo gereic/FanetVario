@@ -16,6 +16,7 @@ void load_configFile(SettingsData* pSetting){
     pSetting->UDPSendPort = preferences.getUInt("UDP_PORT",10110); //Port of udp-server
     pSetting->NMEAOUTPUT = (eNMEAOUTPUT)preferences.getUChar("NMEAOUTPUT",0); //output for NMEA sentences
     pSetting->OutputBLE = preferences.getUChar("OUT_BLE",0); //output also to BLE
+    pSetting->baudRate = preferences.getULong("baud",9600); //baudrate
     preferences.end(); 
 }
 
@@ -33,6 +34,7 @@ void write_configFile(SettingsData* pSetting){
     preferences.putUInt("UDP_PORT",pSetting->UDPSendPort); //Port of udp-server
     preferences.putUChar("NMEAOUTPUT",(uint8_t)pSetting->NMEAOUTPUT); //output for NMEA sentences
     preferences.putUChar("OUT_BLE",pSetting->OutputBLE); //output also to BLE
+    preferences.putULong("baud",pSetting->baudRate);
     preferences.end(); 
     ESP.restart();
 }

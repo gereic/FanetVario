@@ -17,7 +17,7 @@
 class BlueFly {
 public:
     BlueFly(); //constructor
-    bool begin(uint8_t SerialNumber,uint8_t RxPin, uint8_t TxPin,NmeaOut *_pNmeaOut);
+    bool begin(uint8_t SerialNumber,uint32_t baudrate,uint8_t RxPin, uint8_t TxPin,NmeaOut *_pNmeaOut);
     void writeToSerial(String s);
     void run(void); //has to be called cyclic
     float getAlt();

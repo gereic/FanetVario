@@ -43,6 +43,7 @@ struct SettingsData{
   uint16_t UDPSendPort; //Port of udp-server
   eNMEAOUTPUT NMEAOUTPUT; //output for NMEA sentences
   uint8_t OutputBLE; //output also via BLE ??
+  unsigned long baudRate;
 };
 
 struct NMEAStatusData{

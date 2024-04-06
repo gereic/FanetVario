@@ -73,6 +73,7 @@ void onWebSocketEvent(uint8_t client_num,
           doc["password"] = setting.wifi.password;
           doc["wifioff"] = setting.wifi.tWifiStop;
           doc["outble"] = setting.OutputBLE;
+          doc["baudrate"] = setting.baudRate;
           serializeJson(doc, msg_buf);
           webSocket.sendTXT(client_num, msg_buf);
         }
@@ -90,6 +91,7 @@ void onWebSocketEvent(uint8_t client_num,
           if (root.containsKey("password")) newSetting.wifi.password = doc["password"].as<String>();
           if (root.containsKey("wifioff")) newSetting.wifi.tWifiStop = doc["wifioff"].as<uint32_t>();
           if (root.containsKey("outble")) newSetting.OutputBLE = doc["outble"].as<uint8_t>();
+          if (root.containsKey("baudrate")) newSetting.baudRate = doc["baudrate"].as<uint32_t>();
           log_i("write config-to file --> rebooting");
           //delay(10);
           write_configFile(&newSetting);

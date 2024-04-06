@@ -72,7 +72,7 @@ public:
 
 	bool isNewMsgValid(void) {
 		bool ret = false;
-		if (_isNewMsgValid == 3){
+		if (_isNewMsgValid >= 2){ //we got GPRMC
 			ret = true;
 			_isNewMsgValid = 0;
 		} 		

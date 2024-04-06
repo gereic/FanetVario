@@ -66,6 +66,7 @@ function sendValues(){
   ssid : document.getElementById("ssid").value,
   password : document.getElementById("password").value,
   wifioff : document.getElementById("wifioff").value,
+  baudrate : document.getElementById("baudrate").value,
   
   save : 1 
 			};
@@ -162,6 +163,19 @@ window.addEventListener("load", init, false);
           <tr>
             <th>Bluetooth (BLE)</th>
             <td><input type="checkbox" id="outble" name="outble"></td>
+          </tr>
+        </tbody>      
+      </table>
+    </fieldset>
+    <p></p>
+    <p></p>
+    <fieldset>
+      <legend><b>GPS settings</b></legend>
+      <table style="width:100&#37;">
+        <tbody>
+          <tr>
+            <th>Bluetooth (BLE)</th>
+            <td><input type="number" id="baudrate" name="baudrate"></td>
           </tr>
         </tbody>      
       </table>

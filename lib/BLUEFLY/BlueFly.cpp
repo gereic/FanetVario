@@ -26,10 +26,10 @@ int BlueFly::getStringValue(String s,String *sRet,unsigned int fromIndex,String 
   return pos2;
 }
 
-bool BlueFly::begin(uint8_t SerialNumber,uint8_t RxPin, uint8_t TxPin,NmeaOut *_pNmeaOut){
+bool BlueFly::begin(uint8_t SerialNumber,uint32_t baudrate,uint8_t RxPin, uint8_t TxPin,NmeaOut *_pNmeaOut){
     pBlueFlySerial = new HardwareSerial(SerialNumber);
-    //pBlueFlySerial->begin(115200, SERIAL_8N1, RxPin, TxPin);
-    pBlueFlySerial->begin(9600, SERIAL_8N1, RxPin, TxPin);
+    pBlueFlySerial->begin(baudrate, SERIAL_8N1, RxPin, TxPin);
+    //pBlueFlySerial->begin(9600, SERIAL_8N1, RxPin, TxPin);
     recBufferIndex = 0;
     nmea.setBuffer(nmeaBuffer, sizeof(nmeaBuffer));
     pNmeaOut = _pNmeaOut;
