@@ -16,11 +16,18 @@ void Fanet::setNMEAOUT(NmeaOut *_pNmeaOut){
     pNmeaOut = _pNmeaOut;
 }
 
-bool Fanet::begin(uint8_t SerialNumber,uint8_t RxPin, uint8_t TxPin,uint8_t ResetPin){
+bool Fanet::begin(uint8_t SerialNumber,uint8_t RxPin, uint8_t TxPin,uint8_t ResetPin,int8_t BootPin){
     _ResetPin = ResetPin;
+    _BootPin = BootPin;
+    if (_BootPin >= 0){
+        pinMode(_BootPin,OUTPUT);
+        digitalWrite(_BootPin,LOW);
+    }
     pFanetSerial = new HardwareSerial(SerialNumber);
     pFanetSerial->begin(115200, SERIAL_8N1, RxPin, TxPin);
-    pinMode(ResetPin,OUTPUT);
+    pinMode(_ResetPin,OUTPUT);
+    digitalWrite(_ResetPin, LOW);
+    delay(500);
     digitalWrite(_ResetPin, HIGH);
     delay(500); //wait Hardware ready
     resetModule();
@@ -87,9 +94,9 @@ void Fanet::initModule(uint32_t tAct){
     {
     case 0:
         bDGVOk = false;
-        s = "#DGV\n";
-        Serial.print(s.c_str());
-        pFanetSerial->print(s.c_str()); //get module-version
+        s = "#DGV\n"; //get module-version
+        //Serial.print(s.c_str());
+        pFanetSerial->print(s.c_str()); 
         timeout = tAct; //reset timeout
         initCount++;
         break;
@@ -99,9 +106,9 @@ void Fanet::initModule(uint32_t tAct){
         }
         if (bDGVOk){
             bFNAOk = false;
-            s = "#FNA\n";
-            Serial.print(s.c_str());
-            pFanetSerial->print(s.c_str()); //get module-version
+            s = "#FNA\n"; //get module-address
+            //Serial.print(s.c_str());
+            pFanetSerial->print(s.c_str()); 
             timeout = tAct; //reset timeout
             initCount++;
         }
@@ -112,8 +119,8 @@ void Fanet::initModule(uint32_t tAct){
         }
         if (bFNAOk){
             bFAXOk = false;
-            s = "#FAX\n";
-            Serial.print(s.c_str());
+            s = "#FAX\n"; //get FLARM Expiration
+            //Serial.print(s.c_str());
             pFanetSerial->print(s.c_str());
             timeout = tAct; //reset timeout
             initCount++;
@@ -125,7 +132,7 @@ void Fanet::initModule(uint32_t tAct){
         }
         if (bFAXOk){
             bFNCOk = false;
-            s = "#FNC 1,1\n";
+            s = "#FNC " + String(uint8_t(_myData.aircraftType)) + ",1\n"; //set air-type and online-tracking
             Serial.print(s.c_str());
             pFanetSerial->print(s.c_str());
             timeout = tAct; //reset timeout
@@ -139,9 +146,9 @@ void Fanet::initModule(uint32_t tAct){
         if (bFNCOk){
             bDGPOk = false;
             //Serial.print("#FAP 1\n");
-            s = "#DGP 1\n";
-            Serial.print(s.c_str());
-            pFanetSerial->print(s.c_str()); //Enable receiver
+            s = "#DGP 1\n"; //Enable receiver
+            //Serial.print(s.c_str());
+            pFanetSerial->print(s.c_str());
             timeout = tAct; //reset timeout
             initCount++;
         }
@@ -153,9 +160,9 @@ void Fanet::initModule(uint32_t tAct){
         if (bDGPOk){
             bFAPOk = false;
             //Serial.print("#DGP 1\n");
-            s = "#FAP 1\n";
-            Serial.print(s.c_str());
-            pFanetSerial->print(s.c_str()); //Enable FLARM
+            s = "#FAP 1\n"; //Enable FLARM
+            //Serial.print(s.c_str());
+            pFanetSerial->print(s.c_str());
             timeout = tAct; //reset timeout
             initCount++;
         }
@@ -165,11 +172,19 @@ void Fanet::initModule(uint32_t tAct){
             initCount--; //back on step ask module again
         }
         if (bFAPOk){
-            initCount = 100; //we are ready !!
-            s = "#FAP\n";
-            Serial.print(s.c_str());
-            pFanetSerial->print(s.c_str()); //Enable FLARM
-            //Serial.println("**** INIT OK ****");
+            bFNCOk = false;
+            s = "#FNM 1\n"; //set mode to ground
+            //Serial.print(s.c_str());
+            pFanetSerial->print(s.c_str());
+            initCount++;
+        }
+        break;
+    case 7:
+        if (btimeout){
+            initCount--; //back on step ask module again
+        }
+        if (bFNCOk){
+            Serial.println("**** INIT OK ****");
             bInitOk = true;
         }
         break;
@@ -254,7 +269,7 @@ void Fanet::DecodeLine(String line){
     }else if (line.startsWith("#DGR OK")){
         bDGPOk = true;
     }else if (line.startsWith("#FAR OK")){
-        bFAPOk = true;
+        bFAPOk = true;   
     }else if (line.startsWith("#FNF")){
         //we have received tracking-information
         CheckReceivedPackage(line);
@@ -278,7 +293,7 @@ int Fanet::updateModule(String filename){
 
 void Fanet::run(void){    
     uint32_t tAct = millis();
-    initModule(tAct);
+    if (!bInitOk) initModule(tAct);
     while (pFanetSerial->available()){
         if (recBufferIndex >= FANET_MAXRECBUFFER) recBufferIndex = 0; //Buffer overrun
         lineBuffer[recBufferIndex] = pFanetSerial->read();
@@ -305,6 +320,22 @@ void Fanet::run(void){
     }
     */
     sendPilotName(tAct);
+    if (bSetFlyingState){
+        bSetFlyingState = false;
+        String s;
+        if (_flyingState){
+            s = "#FNM 0\n"; //set air-mode
+        }else{
+            s = "#FNM 1\n"; //set ground-mode
+        }
+        Serial.print(s.c_str());
+        pFanetSerial->print(s.c_str()); //get module-version
+    }
+}
+
+void Fanet::setFlyingState(bool flying){
+    _flyingState = flying;
+    bSetFlyingState = true;
 }
 
 void Fanet::sendWeather(void){

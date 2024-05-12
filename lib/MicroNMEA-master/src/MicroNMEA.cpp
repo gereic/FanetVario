@@ -271,6 +271,14 @@ const char* MicroNMEA::parseTime(const char* s)
 	_minute = parseUnsignedInt(s + 2, 2);
 	_second = parseUnsignedInt(s + 4, 2);
 	_hundredths = parseUnsignedInt(s + 7, 2);
+	uint32_t newTime;
+	newTime = (uint32_t(_hour) * 60 *60) + (uint32_t(_minute) * 60) + uint32_t(_second);
+	//Serial.println(newTime);
+	if (actTimestamp == newTime){
+		//Serial.println("new data ok");
+		_isNewMsgValid = 1; //
+	} 
+	actTimestamp = newTime;
 	return skipField(s + 9);
 }
 
@@ -321,7 +329,7 @@ bool MicroNMEA::processGGA(const char *s)
 	_geoidAlt = parseFloat(s, 3, &s);
 	_altitudeValid = true;
 	// That's all we care about
-	if (_isValid) _isNewMsgValid |= 0x01;
+	//if (_isValid) _isNewMsgValid |= 0x01;
 	//Serial.print("GGA valid=");
 	//Serial.println(_isNewMsgValid);
 
@@ -359,7 +367,7 @@ bool MicroNMEA::processRMC(const char* s)
 	_course = parseFloat(s, 3, &s);
 	s = parseDate(s);
 	// That's all we care about
-	if (_isValid) _isNewMsgValid |= 0x02;
+	//if (_isValid) _isNewMsgValid |= 0x02;
 	//Serial.print("RMC valid=");
 	//Serial.println(_isNewMsgValid);
 	return true;

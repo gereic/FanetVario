@@ -14,8 +14,17 @@
 #include "WebHelper.h"
 #include "fileOps.h"
 #include <ble.h>
+#include <AceButton.h>
 
 #include "main.h"
+#include "TimeDefs.h"
+
+#if defined(SSD1306)
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <Wire.h>
+#include <oled.h>
+#endif
 
 
 /***************  Configuration Begin *******************/
@@ -24,17 +33,56 @@ String host_name = "";
 
 /***************  Configuration End *********************/
 
-const char compile_date[] = __DATE__ " " __TIME__;
+//const char compile_date[] = __DATE__ " " __TIME__;
+String compile_date = String(BUILD_DATE_YEAR_CH0) + String(BUILD_DATE_YEAR_CH1) + String(BUILD_DATE_YEAR_CH2) + String(BUILD_DATE_YEAR_CH3) + "-" + String(BUILD_DATE_MONTH_CH0) + String(BUILD_DATE_MONTH_CH1) + "-" + String(BUILD_DATE_DAY_CH0) + String(BUILD_DATE_DAY_CH1) + "T" + String(BUILD_TIME_HOUR_CH0) + String(BUILD_TIME_HOUR_CH1) + ":" + String(BUILD_TIME_MIN_CH0) + String(BUILD_TIME_MIN_CH1) + ":" + String(BUILD_TIME_SEC_CH0) + String(BUILD_TIME_SEC_CH1);
 
 #define ARDUINO_RUNNING_CORE0 0
 #define ARDUINO_RUNNING_CORE1 1
 
-#define LED_BUILTIN 2
+#if defined(SSD1306)
+//Adafruit_SSD1306 display = Adafruit_SSD1306(128, 64, &Wire);
+//Oled display;
+#endif
+
+
+
+int8_t pinExtCtrl = -1;
+int8_t pinAdcCtrl = -1;
+int8_t pinBat = -1;
+
+#ifdef Heltec_Wifi_V3
+#define PIN_LED 35
+#define PPS_PIN 5
+#define FANET_RX 3
+#define FANET_TX 4
+#define FANET_RST 2
+#define FANET_BOOT 46
+#define GPS_RX 42
+#define GPS_TX 45
+#define PIN_BAT 1
+#define PIN_DISPLAY_SDA 17
+#define PIN_DISPLAY_SCL 18
+#define PIN_DISPLAY_RST 21
+
+#else
+#define PIN_LED 2
 #define PPS_PIN 4
+#define FANET_RX 17
+#define FANET_TX 16
+#define FANET_RST 5
+#define GPS_RX 23
+#define GPS_TX 22
+#endif
 
 #define Serial_MAXRECBUFFER 255
 char SerialRecBuffer[Serial_MAXRECBUFFER];
 uint8_t SerialRecBufferIndex;
+int8_t PinADCVoltage = -1;
+float adcVoltageMultiplier = 0.0;
+uint16_t battFull = 4050;
+uint16_t battEmpty = 3300;
+
+TwoWire *pI2cOne = &Wire1;
 
 BlueFly blueFly;
 Flarm flarm;
@@ -42,8 +90,18 @@ volatile bool ppsTriggered;
 struct SettingsData setting;
 struct StatusData status;
 bool WebUpdateRunning = false;
+bool bPowerOff = false;
 Fanet fanet;
 NmeaOut nmeaout;
+
+
+//buttons
+struct myButtons {
+  int8_t PinButton = -1;
+  uint8_t state = 0;
+};
+ace_button::AceButton buttons[NUMBUTTONS];
+myButtons sButton[NUMBUTTONS];
 
 IPAddress local_IP(192,168,4,1);
 IPAddress gateway(192,168,4,250);
@@ -60,13 +118,261 @@ bool ble_mutex=false;
 
 TaskHandle_t xHandleBackground = NULL;
 TaskHandle_t xHandleBluetooth = NULL;
+TaskHandle_t xHandleOled = NULL;
 
 
 void taskBackGround(void *pvParameters);
 void taskBluetooth(void *pvParameters);
+void taskOled(void *pvParameters);
 void WiFiEvent(WiFiEvent_t event);
 void sendData2Client(String data);
 void listSpiffsFiles();
+int addChecksum(char *buffer, size_t size);
+bool sendCmd2NMEA(const char* s,const char* sRet,uint32_t tTimeout);
+bool setupQuetelGps(void);
+bool readBatt(uint32_t tAct);
+float readBattvoltage();
+void checkFlyingState(uint32_t tAct);
+void handleEvent(ace_button::AceButton* button, uint8_t eventType, uint8_t buttonState);
+void powerOff();
+
+void powerOff(){
+  bPowerOff = true;
+  delay(100);
+  log_i("wait until all tasks are stopped");
+  eTaskState tOled = eDeleted;
+  eTaskState tBackground = eDeleted;
+  eTaskState tBluetooth = eDeleted;
+  while(1){
+    //wait until all tasks are stopped
+    if (xHandleBackground != NULL) tBackground = eTaskGetState(xHandleBackground);
+    if (xHandleBluetooth != NULL) tBluetooth = eTaskGetState(xHandleBluetooth);
+    if (xHandleOled != NULL) tOled = eTaskGetState(xHandleOled);
+    if (((tBackground == eDeleted) || (tBackground == eReady)) && 
+        ((tBluetooth == eDeleted) || (tBluetooth == eReady)) &&
+        ((tOled == eDeleted) || (tOled == eReady))) break; //now all tasks are stopped
+    log_i("Background=%d,Bluetooth=%d,oled=%d",tBackground,tBluetooth,tOled);
+    delay(1000);
+  }
+  digitalWrite(PIN_LED,HIGH);
+  log_i("switch power-supply off");  
+  delay(100);
+  if ((sButton[0].PinButton >= 0)){
+    while (!digitalRead(sButton[0].PinButton)){
+      log_i("wait until power-button is released");
+      delay(500); //wait 500ms
+    }
+    uint64_t mask = uint64_t(1) << uint64_t(sButton[0].PinButton); //prg-Button has a pull-up-resistor --> Pin has to go low, if pressed
+    esp_sleep_enable_ext1_wakeup(mask,ESP_EXT1_WAKEUP_ALL_LOW); //wait until power is back again
+  }
+  
+
+  //Serial.end();
+  //esp_wifi_stop();
+  //#ifdef BLUETOOTH
+  #ifndef S3CORE
+  esp_bluedroid_disable();
+  esp_bluedroid_deinit();
+  esp_bt_controller_disable();
+  esp_bt_controller_deinit();
+  esp_bt_mem_release(ESP_BT_MODE_BTDM);
+  #endif
+  //#endif
+  if (pinExtCtrl >= 0) digitalWrite(pinExtCtrl,HIGH); //switch ext-power off
+  if (pinAdcCtrl >= 0) digitalWrite(pinAdcCtrl,HIGH); //switch adc-control off
+
+  esp_deep_sleep_start();
+}
+
+
+// The event handler for the button.
+void handleEvent(ace_button::AceButton* button, uint8_t eventType, uint8_t buttonState) {
+
+  // Print out a message for all events.
+  /*
+  Serial.print(F("handleEvent(): eventType: "));
+  Serial.print(eventType);
+  Serial.print(F("; buttonState: "));
+  Serial.println(buttonState);
+  */
+
+  // Get the LED pin
+  uint8_t id = button->getId();
+
+  // Control the LED only for the Pressed and Released events.
+  // Notice that if the MCU is rebooted while the button is pressed down, no
+  // event is triggered and the LED remains off.
+  switch (eventType) {
+    case ace_button::AceButton::kEventClicked:
+      sButton[id].state = eventType;
+      log_i("button %d clicked",id);
+      break;
+    case ace_button::AceButton::kEventLongPressed:
+      sButton[id].state = eventType;
+      //log_i("button %d long pressed",id);
+      break;
+    case ace_button::AceButton::kEventDoubleClicked:
+      sButton[id].state = eventType;
+      log_i("button %d double clicked",id);
+      break;
+  }
+}
+
+void checkFlyingState(uint32_t tAct){
+  static uint32_t tOk = millis();
+  static uint32_t tFlightTime = millis();
+  if (status.flying){
+    //flying
+    if ((!status.gps.Fix) || (status.gps.speed < MIN_FLIGHT_SPEED)){
+      if (timeOver(tAct,tOk,MIN_GROUND_TIME)){
+        status.flying = false;
+        fanet.setFlyingState(status.flying);
+      }
+    }else{
+      tOk = tAct;
+    }
+    if (timeOver(tAct,tFlightTime,1000)){
+      //1 sec. over --> inc. flight-time
+      status.flightTime ++; //inc. flight-Time
+      tFlightTime += 1000;
+    }
+  }else{
+    //on ground
+    if ((status.gps.Fix) && (status.gps.NumSat >= 4) && (status.gps.speed > MIN_FLIGHT_SPEED)){ //minimum 4 satelites to get accurade position and speed
+      if (timeOver(tAct,tOk,MIN_FLIGHT_TIME)){
+        tFlightTime = tAct;
+        status.flightTime = 0;
+        status.flying = true;
+        fanet.setFlyingState(status.flying);
+      }
+    }else{
+      tOk = tAct;
+    }
+  }
+
+}
+
+
+
+float readBattvoltage(){
+  // multisample ADC
+  const byte NO_OF_SAMPLES = 5;
+  uint32_t adc_reading = 0;
+  float vBatt = 0.0;
+  if (PinADCVoltage < 0){
+    return 0.0; //not voltage-pin defined !!
+  }
+
+  analogRead(PinADCVoltage); // First measurement has the biggest difference on my board, this line just skips the first measurement
+  for (int i = 0; i < NO_OF_SAMPLES; i++) {
+    uint16_t thisReading = analogRead(PinADCVoltage);
+    adc_reading += thisReading;
+  }
+  adc_reading /= NO_OF_SAMPLES;
+
+  vBatt = (adcVoltageMultiplier * float(adc_reading) / 1023.0f * 3.3f) + setting.BattVoltOffs;
+  //log_i("adc=%d, vADC=%.3f, vBatt=%.3f",adc_reading,float(adc_reading) / 1023.0f * 3.3f,vBatt);
+  return vBatt;
+}
+
+bool readBatt(uint32_t tAct){
+  static uint32_t tBatt = millis() - 5000;
+  if ((tAct - tBatt) >= 5000){
+    tBatt = tAct;
+    status.battery.voltage = uint16_t(readBattvoltage()*1000);
+    status.battery.percent = scale(status.battery.voltage,battEmpty,battFull,0,100);
+    return true; //bat-status readed
+  }else{
+    return false;
+  }
+}
+
+
+int addChecksum(char *buffer, size_t size){
+    uint8_t chk = 0;
+    uint16_t tSize = 0;   
+    while(*buffer){
+        buffer++; //skip first char
+        chk ^= *buffer;
+        tSize++;
+    }
+    //Serial.printf("size=%d,tSize=%d,",size,tSize);
+    tSize += snprintf(buffer,size-tSize,"*%02X\r\n",chk);
+    //Serial.printf("tSize2=%d\r\n",tSize);
+    return tSize;
+}
+
+bool sendCmd2NMEA(const char* s,const char* sRet,uint32_t tTimeout = 2000){
+  char retBuffer[MAXSTRING];
+  char buffer[MAXSTRING];
+  int pos = 0;
+  pos += snprintf(&buffer[pos],MAXSTRING-pos,s);
+  pos = addChecksum(buffer,MAXSTRING);
+  pos = 0;
+  pos += snprintf(&retBuffer[pos],MAXSTRING-pos,sRet);
+  pos = addChecksum(retBuffer,MAXSTRING);
+
+  //log_i("%s",buffer);
+  while(Serial2.available()){
+    Serial2.read();
+  }
+  //Serial.print("tx=");
+  //Serial.print(buffer);
+  Serial2.write(&buffer[0]);  
+  //Serial.print("sRet=");
+  //Serial.print(retBuffer);  
+  uint32_t tstart = millis();
+  //wait for response
+  pos = 0;
+  buffer[pos] = 0;
+  char c;
+  while((millis() - tstart) < tTimeout){
+    while(Serial2.available()){
+      c = Serial2.read();
+      //Serial.printf("%c",c);
+      if (c == '$') pos = 0;
+      buffer[pos] = c;
+      pos++;
+      if (pos >= MAXSTRING) pos = 0;
+      buffer[pos] = 0; //zero-termination !!      
+      if (c == '\n'){
+        //Serial.print("rx=");
+        //Serial.print(buffer);
+        if (strcmp(retBuffer,buffer) == 0){
+          //log_i("successful transmitted");
+          //Serial.println(buffer);
+          return true;
+        }
+      }
+    }
+    delay(1);
+  }
+  //Serial.println(buffer);
+  return false;
+}
+
+bool setupQuetelGps(void){
+  log_i("************ config GPS *************");
+  Serial2.begin(9600, SERIAL_8N1,GPS_RX,GPS_TX);
+  delay(500);
+  if (!sendCmd2NMEA("$PMTK353,1,0,1,0,0","$PMTK001,353,3,1,0,1,0,0,13")){ //enable GPS & Galileo
+    Serial2.end();
+    log_e("error configure GPS");
+    return false;
+  }
+  if (!sendCmd2NMEA("$PQTXT,W,0,0","$PQTXT,W,OK")){ //set GPTXT to off
+    Serial2.end();
+    log_e("error configure GPS");
+    return false;
+  }
+  if (!sendCmd2NMEA("$PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0","$PMTK001,314,3")){ //set nmea-output to GPRMC and GPGGA
+    Serial2.end();
+    log_e("error configure GPS");
+    return false;
+  }
+  log_i("GPS-successfully configured");
+  return true;  
+}
 
 void listSpiffsFiles(){
   File root = SPIFFS.open("/");
@@ -128,7 +434,7 @@ void printSettings(){
 }
 
 void IntPPS(){
-  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+  digitalWrite(PIN_LED, !digitalRead(PIN_LED));
   ppsTriggered = true;
 }
 
@@ -355,16 +661,58 @@ void scanNetworks(){
 void setup() {
   // put your setup code here, to run once:
   // Set pin mode
-  pinMode(LED_BUILTIN,OUTPUT);
-  digitalWrite(LED_BUILTIN,HIGH);
+  for (uint8_t i = 0; i < NUMBUTTONS; i++) {
+    //init buttons
+    sButton[i].PinButton = -1;
+  }  
+  #ifdef Heltec_Wifi_V3
+    pinExtCtrl = 36;
+    pinAdcCtrl = 37;  
+    pinMode(pinExtCtrl,OUTPUT);
+    digitalWrite(pinExtCtrl,LOW); //switch external power on
+    pinMode(pinAdcCtrl,OUTPUT);
+    digitalWrite(pinAdcCtrl,LOW);//switch ADC-Control to measure Batt-voltage
+    delay(500); //wait power is stable
+    analogReadResolution(10); // Default of 12 is not very linear. Recommended to use 10 or 11 depending on needed resolution.
+    PinADCVoltage = 1; //GPIO1 batt voltage
+    pinMode(PinADCVoltage, INPUT); //set pin ADC-Voltage as input
+    adcVoltageMultiplier = 5.4f;
+    sButton[0].PinButton = 0;
+  #endif
+
+  for (uint8_t i = 0; i < NUMBUTTONS; i++) {
+    // initialize built-in LED as an output
+    if (sButton[i].PinButton >= 0){
+      //set pin for button as input
+      pinMode(sButton[i].PinButton, INPUT_PULLUP);
+      // initialize the corresponding AceButton
+      buttons[i].init(sButton[i].PinButton, HIGH, i);
+    }
+  }
+  // Configure the ButtonConfig with the event handler, and enable all higher
+  // level events.
+  ace_button::ButtonConfig* buttonConfig = ace_button::ButtonConfig::getSystemButtonConfig();
+  buttonConfig->setEventHandler(handleEvent);
+  buttonConfig->setFeature(ace_button::ButtonConfig::kFeatureClick);
+  buttonConfig->setFeature(ace_button::ButtonConfig::kFeatureDoubleClick);
+  buttonConfig->setFeature(ace_button::ButtonConfig::kFeatureLongPress);
+  buttonConfig->setFeature(ace_button::ButtonConfig::kFeatureRepeatPress);
+  buttonConfig->setDebounceDelay(20); //set debounce-delay to 20ms
+  buttonConfig->setLongPressDelay(1000); //set long-press-delay to 500ms
+  buttonConfig->setClickDelay(500); //set click-delay to 200ms
+
+  pinMode(PIN_LED,OUTPUT);
+  digitalWrite(PIN_LED,HIGH);
   delay(500);
-  digitalWrite(LED_BUILTIN,LOW);
+  digitalWrite(PIN_LED,LOW);
   ppsTriggered = false;
   pinMode(PPS_PIN,INPUT);
   attachInterrupt(digitalPinToInterrupt(PPS_PIN), IntPPS, FALLING);
 
   Serial.begin(115200);
-  
+
+  //setupDisplay();
+
   log_i("SDK-Version=%s",ESP.getSdkVersion());
   log_i("CPU-Speed=%d",ESP.getCpuFreqMHz());
   log_i("Total heap: %d", ESP.getHeapSize());
@@ -385,12 +733,14 @@ void setup() {
   log_i("startOption=%d",startOption);
 
     // Make sure we can read the file system
+  
   if( !SPIFFS.begin(true)){
     log_e("Error mounting SPIFFS");
     while(1);
   }
 
   load_configFile(&setting); //load configuration
+  log_i("spiffs total bytes:%d",SPIFFS.totalBytes());
 
   //listSpiffsFiles();
 
@@ -402,14 +752,28 @@ void setup() {
   
   xTaskCreatePinnedToCore(taskBackGround, "taskBackGround", 6500, NULL, 5, &xHandleBackground, ARDUINO_RUNNING_CORE1); //background task
   xTaskCreatePinnedToCore(taskBluetooth, "taskBluetooth", 4096, NULL, 7, &xHandleBluetooth, ARDUINO_RUNNING_CORE1);
+  xTaskCreatePinnedToCore(taskOled, "taskOled", 6500, NULL, 8, &xHandleOled, ARDUINO_RUNNING_CORE1); //background Oled
 
-  fanet.begin(1,17,16,5); //Hardwareserial, rxPin, txPin, Reset-Pin
+  #ifdef FANET_BOOT
+    fanet.begin(1,FANET_RX,FANET_TX,FANET_RST,FANET_BOOT); //Hardwareserial, rxPin, txPin, Reset-Pin  
+  #else
+    fanet.begin(1,FANET_RX,FANET_TX,FANET_RST,-1); //Hardwareserial, rxPin, txPin, Reset-Pin  
+  #endif
+  fanet.setAircraftType(setting.AircraftType); //we have to set Aircraft-type before init module
+  uint32_t tStart = millis();
   while (!fanet.initOk()){
     fanet.run(); //call run to get DevId
+    if ((millis() - tStart) >= 3000){
+
+      break; //timeout --> go further to give firmware update a chance
+    }
   }
   setting.myDevId = fanet.getMyDevId();
   setting.FlarmExp = fanet.getFlarmExp();
   setting.fanetVersion = fanet.sVersion;
+  if(setting.myDevId.length() == 0){
+    setting.myDevId = "XXXXXX";
+  }
   host_name = APPNAME "-" + setting.myDevId; //String((ESP32_getChipId() & 0xFFFFFF), HEX);
 
   //setupWifi();
@@ -419,21 +783,48 @@ void setup() {
   //esp_restart();
 
   delay(500);
-  nmeaout.begin(setting.NMEAOUTPUT,setting.UDPServerIP,setting.UDPSendPort,host_name);
+  #ifdef Heltec_Wifi_V3
+  //delay(1000);
+  for (int i = 0;i < 3; i++){
+    if (setupQuetelGps()){
+      break;
+    }
+  }
+  //setupQuetelGps();
+  //delay(1000);
+  #endif
+
+  nmeaout.begin(setting.NMEAOUTPUT,setting.UDPServerIP,setting.UDPSendPort,host_name);  
   fanet.setNMEAOUT(&nmeaout); //Hardwareserial, rxPin, txPin, Reset-Pin)
-  fanet.setPilotname(setting.PilotName); //set name of Pilot
-  fanet.setAircraftType(setting.AircraftType);
-  blueFly.begin(2,setting.baudRate,23,22,&nmeaout); //Hardwareserial, rxPin, txPin
+  fanet.setPilotname(setting.PilotName); //set name of Pilot  
+  blueFly.begin(2,setting.baudRate,GPS_RX,GPS_TX,&nmeaout); //Hardwareserial, rxPin, txPin
   flarm.begin(&nmeaout);
 
 
 }
 
+void taskOled(void *pvParameters){
+  log_i("start Oled-task");
+  Oled display;
+  pI2cOne->begin(PIN_DISPLAY_SDA, PIN_DISPLAY_SCL);
+  display.begin(pI2cOne,PIN_DISPLAY_RST);
+  while(1){
+    display.run();
+    delay(10);
+    if ((WebUpdateRunning) || (bPowerOff)) break;
+  }
+  if (WebUpdateRunning) display.webUpdate();
+  if (bPowerOff) display.end();
+  log_i("stop task");
+  vTaskDelete(xHandleOled);
+}
+
+
 void BlinkLed(uint32_t tAct){
   static uint32_t tLed = millis();
   if ((tAct - tLed) >= 500){
       tLed = tAct;
-      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+      digitalWrite(PIN_LED, !digitalRead(PIN_LED));
   }
 }
 
@@ -442,26 +833,43 @@ bool sendFanetStatus(){
   static float oldTurnrate = 0.0;  
   //if (!blueFly.nmea.isValid()) return;
   if (!blueFly.nmea.isNewMsgValid()) return false;
-  stateData tFanetData;  
-  tFanetData.lat = blueFly.nmea.getLatitude() / 1000000.;
-  tFanetData.lon = blueFly.nmea.getLongitude() / 1000000.;
+  status.gps.NumSat = blueFly.nmea.getNumSatellites(); 
+  status.gps.Fix = 1;
+  status.gps.Lat = blueFly.nmea.getLatitude() / 1000000.;
+  status.gps.Lon = blueFly.nmea.getLongitude() / 1000000.;
 	long alt = 0;
   if (!blueFly.nmea.getAltitude(alt)){
     alt = long(blueFly.getAlt() * 1000);
     //Serial.println("alt not valid");
-  }
+  } 
   if (oldAlt == 0){
     oldAlt = alt;
-  }
-
-  tFanetData.altitude = alt/1000.;
+  }   
+  status.gps.alt = alt/1000.; 
   long geoIdAlt = 0;
   blueFly.nmea.getGeoIdAltitude(geoIdAlt);
-  tFanetData.geoIdAltitude = geoIdAlt/1000.;
-  tFanetData.speed = blueFly.nmea.getSpeed()*1.852/1000.;
+  status.gps.geoidAlt = geoIdAlt/1000.;  
+
+  if (status.gps.NumSat < 4){
+    status.gps.speed = 0;
+    status.gps.course = 0;
+    return false;
+  } 
+  status.gps.speed = blueFly.nmea.getSpeed()*1.852/1000.; //speed in cm/s --> we need km/h
+  status.gps.course = blueFly.nmea.getCourse()/1000.;  
+  //Serial.println("new GPS Data avaiable");
+  stateData tFanetData;  
+  tFanetData.lat = status.gps.Lat;
+  tFanetData.lon = status.gps.Lon;
+
+
+
+  tFanetData.altitude = status.gps.alt;
+  tFanetData.geoIdAltitude = status.gps.geoidAlt;
+  tFanetData.speed = status.gps.speed;
   tFanetData.climb = (alt - oldAlt)/1000.;
   oldAlt = alt;
-  tFanetData.heading = blueFly.nmea.getCourse()/1000.;
+  tFanetData.heading = status.gps.course;
 	tFanetData.year = blueFly.nmea.getYear() - 1900;
 	tFanetData.month = blueFly.nmea.getMonth();
 	tFanetData.day = blueFly.nmea.getDay();
@@ -509,6 +917,7 @@ void Fanet2FlarmData(trackingData *FanetData,FlarmtrackingData *FlarmDataData){
   FlarmDataData->speed = FanetData->speed;
 }
 
+/*
 bool timeOver(uint32_t tAct,uint32_t timestamp,uint32_t tTime){
     uint32_t tDiff = tAct - timestamp;
     if ((tDiff) >= tTime){
@@ -517,6 +926,7 @@ bool timeOver(uint32_t tAct,uint32_t timestamp,uint32_t tTime){
         return false;
     }
 }
+*/
 
 void loop() {
   trackingData tFanetData;  
@@ -582,6 +992,17 @@ void loop() {
     blueFly.nmea.clearNewMsgValid(); //clear flag msg is valid
     tPPS = millis();
   }
+  if (timeOver(millis(),tPPS,10000)){
+    //no pps for more then 10sec. --> clear GPS-state
+    status.gps.Fix = 0;
+    status.gps.speed = 0.0;
+    status.gps.Lat = 0.0;
+    status.gps.Lon = 0.0;
+    status.gps.alt = 0.0;
+    status.gps.geoidAlt = 0.0;
+    status.gps.course = 0.0;
+    status.gps.NumSat = 0;    
+  }
   nmeaout.run();
   sendData2Client(nmeaout.getSendData());  
 
@@ -591,7 +1012,39 @@ void loop() {
     log_i("timediff sendFlarm=%d",millis()-tPPS); //~20ms
   }
   */
-
+  checkFlyingState(millis());
+  readBatt(millis());
+  for (uint8_t i = 0; i < NUMBUTTONS; i++) {
+    if (sButton[i].PinButton >= 0){
+      buttons[i].check();
+    }
+  }
+  //check Button 0
+  if (sButton[0].state == ace_button::AceButton::kEventClicked){
+    //log_v("Short Press IRQ");
+    //setting.screenNumber ++;
+    //bShowBattPower = true; //show battery-state again
+    //if (setting.screenNumber > MAXSCREENS) setting.screenNumber = 0;
+    //write_screenNumber(); //save screennumber in File
+  }else if (sButton[0].state == ace_button::AceButton::kEventLongPressed){
+    //log_v("Long Press IRQ");
+    status.bPowerOff = true;
+  }else if (sButton[0].state == ace_button::AceButton::kEventDoubleClicked){
+    //log_v("double clicked IRQ"); --> switch wifi off or on
+    //log_i("double clicked wifi on/off");
+    //userled.setState(gxUserLed::off); //switch to state off --> so state is working
+    //if (status.bWifiOn){
+    //  userled.setState(gxUserLed::showWifiDis);
+    //  wifiCMD = 10; //switch off wifi
+    //}else{
+    //  userled.setState(gxUserLed::showWifiEn);
+    //  wifiCMD = 11; //switch on wifi
+    //}
+  }
+  sButton[0].state =  0;  
+  if (status.bPowerOff){
+    powerOff(); //power off, when battery is empty !!
+  }  
 }
 
 void taskBackGround(void *pvParameters){
@@ -651,7 +1104,10 @@ void taskBackGround(void *pvParameters){
       }
     }
     delay(1);
-	}
+    if (bPowerOff) break;
+  }
+  log_i("stop task");
+  vTaskDelete(xHandleBackground);
 }
 
 void taskBluetooth(void *pvParameters) {
@@ -708,7 +1164,9 @@ void taskBluetooth(void *pvParameters) {
 		   ble_mutex=false;
 	   }
 	   vTaskDelay(100);
-	 }
+     if (bPowerOff) break;
+	 }   
   }
-
+  log_i("stop task");
+  vTaskDelete(xHandleBluetooth);
 }

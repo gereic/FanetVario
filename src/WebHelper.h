@@ -15,7 +15,7 @@ extern struct StatusData status;
 extern bool WebUpdateRunning;
 extern Fanet fanet;
 extern BlueFly blueFly;
-extern const char compile_date[];
+extern String compile_date;
 
 void Web_setup(void);
 void Web_stop(void);

@@ -59,9 +59,9 @@ typedef struct {
 class Fanet {
 public:
     Fanet(); //constructor
-    bool begin(uint8_t SerialNumber,uint8_t RxPin, uint8_t TxPin,uint8_t ResetPin);
+    bool begin(uint8_t SerialNumber,uint8_t RxPin, uint8_t TxPin,uint8_t ResetPin,int8_t BootPin);
     String getMyDevId(void);
-    String getFlarmExp(void);
+    String getFlarmExp(void);    
     void setNMEAOUT(NmeaOut *_pNmeaOut);
     void setPilotname(String name);
     void setAircraftType(eFanetAircraftType type);
@@ -73,6 +73,7 @@ public:
     void printFanetData(trackingData tData);
     void writeStateData2FANET(stateData *tData);
     int updateModule(String filename);
+    void setFlyingState(bool flying);
     String getAircraftType(eFanetAircraftType type);
     bool initOk(void);
     String sVersion;
@@ -93,6 +94,7 @@ protected:
     trackingData actTrackingData;
     bool newData = false;
     uint8_t _ResetPin;
+    int8_t _BootPin;
     String _PilotName;
     void sendWeather(void);
     uint32_t tWeather;
@@ -104,6 +106,7 @@ protected:
     void getMyID(String line);
     void getVersion(String line);
     void getFAX(String line);
+
     char lineBuffer[FANET_MAXRECBUFFER];
     uint8_t recBufferIndex;
     trackingData _myData;
@@ -114,6 +117,8 @@ protected:
     bool bFAPOk;
     bool bFAXOk;
     bool bInitOk;
+    bool bSetFlyingState;
+    bool _flyingState = false;
     
 };
 

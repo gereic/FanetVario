@@ -46,6 +46,7 @@ int xmodem_transmit(HardwareSerial *serial, const char *filename,uint8_t resetPi
 	}
 
 	size_t len = file.size();
+	size_t lenTotal = len;
 	log_i("len: %d", len);
 
     pinMode(resetPin, OUTPUT);
@@ -80,7 +81,7 @@ int xmodem_transmit(HardwareSerial *serial, const char *filename,uint8_t resetPi
 	serial->flush();
 	//serial->readString();
 
-    noInterrupts();
+    //noInterrupts();
 
 	bool read_file=true;
 
@@ -88,12 +89,13 @@ int xmodem_transmit(HardwareSerial *serial, const char *filename,uint8_t resetPi
 	{
 		size_t z = 0;
 		int next = 0;
+		log_i("%d%% completed",100 - (100*len/lenTotal));
 
 		z = min(len, sizeof(chunk.payload));
 		if (read_file)
 		{
 		  //log_i("read file len=%d",z);
-		  file.read(chunk.payload, z);
+		  file.read(&chunk.payload[0], z);
 		}
 
 		memset(chunk.payload + z, 0xff, sizeof(chunk.payload) - z);
@@ -145,7 +147,7 @@ int xmodem_transmit(HardwareSerial *serial, const char *filename,uint8_t resetPi
 			case X_ACK:
 				next = 1;
 				sent_blocks++;
-				log_i("X_ACK");
+				//log_i("X_ACK");
 				delay(100);
 				read_file=true;
 				break;

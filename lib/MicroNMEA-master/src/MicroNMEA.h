@@ -72,7 +72,7 @@ public:
 
 	bool isNewMsgValid(void) {
 		bool ret = false;
-		if (_isNewMsgValid >= 2){ //we got GPRMC
+		if (_isNewMsgValid){ //we got GPRMC
 			ret = true;
 			_isNewMsgValid = 0;
 		} 		
@@ -199,6 +199,7 @@ private:
 	uint8_t _month, _day, _hour, _minute, _second, _hundredths;
 	uint8_t _numSat;
 	uint8_t _hdop;
+	uint32_t actTimestamp;
 
 	void (*_badChecksumHandler)(const MicroNMEA &nmea);
 	void (*_unknownSentenceHandler)(const MicroNMEA &nmea);

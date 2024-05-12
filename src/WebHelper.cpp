@@ -1,4 +1,5 @@
 #include <WebHelper.h>
+#include "./web/website.h"
 
 // Globals
 AsyncWebServer server(80);
@@ -7,6 +8,19 @@ int led_state = 0;
 char msg_buf[500];
 #define MAXCLIENTS 10
 uint8_t clientPages[MAXCLIENTS];
+
+void sendPageHeader(uint8_t client_num);
+
+void sendPageHeader(uint8_t client_num){
+  StaticJsonDocument<400> doc;
+  doc.clear();
+  doc["myDevId"] = setting.myDevId;
+  doc["appname"] = String(APPNAME "-" VERSION);
+  doc["buildDate"] = "build:" + compile_date + " sdk:" + String(ESP.getSdkVersion());
+  doc["pilot"] = "pilot: " + setting.PilotName + " [" + setting.myDevId + "]";
+  serializeJson(doc, msg_buf);
+  webSocket.sendTXT(client_num, msg_buf);
+}
 
 /***********************************************************
  * Functions
@@ -55,6 +69,7 @@ void onWebSocketEvent(uint8_t client_num,
         value = doc["page"];                    //Get value of sensor measurement
         if (client_num < MAXCLIENTS) clientPages[client_num] = value;
         log_i("page=%d",value);
+        sendPageHeader(client_num);
         doc.clear();
         if (clientPages[client_num] == 1){ //info
           doc["myDevId"] = setting.myDevId;
@@ -207,81 +222,48 @@ static void handle_update_progress_cb(AsyncWebServerRequest *request, String fil
   }
 }
 
+void loadFromFlash(AsyncWebServerRequest *request,const uint8_t * content, size_t len,String dataType = "text/html") {
+  AsyncWebServerResponse *response = request->beginResponse_P(200, dataType,content, len);
+  response->addHeader("Content-Encoding", "gzip");
+  request->send(response);   
+}
+
 void Web_setup(void){
   for (int i = 0;i < MAXCLIENTS;i++) clientPages[i] = 0;
   // On HTTP request for root, provide index.html file
   server.on("/fwupdate", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url() + ".html", "text/html",false,processor);
+    //request->send(SPIFFS, request->url() + ".html", "text/html",false,processor);
+    loadFromFlash(request,fwupdate_html_gz,fwupdate_html_gz_len);
   });
   // handler for the /update form POST (once file upload finishes)
   server.on("/fwupdate", HTTP_POST, [](AsyncWebServerRequest *request){
       request->send(200);
     }, handle_update_progress_cb);
-  server.on("/settings.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
+
   server.on("/fullsettings.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/setgeneral.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/setgs.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/setoutput.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/setwifi.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/developmenue.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
+    //request->send(SPIFFS, request->url(), "text/html",false,processor);
+    loadFromFlash(request,fullsettings_html_gz,fullsettings_html_gz_len);
   });
   server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/sendmessage.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/neighbours.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
+    //request->send(SPIFFS, request->url(), "text/html",false,processor);
+    loadFromFlash(request,index_html_gz,index_html_gz_len);
   });
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, "/index.html", "text/html",false,processor);
+    //request->send(SPIFFS, "/index.html", "text/html",false,processor);
+    loadFromFlash(request,index_html_gz,index_html_gz_len);
   });
   server.on("/info.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/msgtype1.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/msgtype2.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/msgtype3.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/msgtype4.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/msgtype5.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/msgtype7.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
+    //request->send(SPIFFS, request->url(), "text/html",false,processor);
+    loadFromFlash(request,info_html_gz,info_html_gz_len);
   });
 
   server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/css");
+    //request->send(SPIFFS, request->url(), "text/css");
+    loadFromFlash(request,style_css_gz,style_css_gz_len,"text/css");
   });
-
-  server.on("/communicator.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-
-  // On HTTP request for style sheet, provide style.css
-  //server.on("/style.css", HTTP_GET, onCSSRequest);
+  server.on("/scripts.js", HTTP_GET, [](AsyncWebServerRequest *request){
+    loadFromFlash(request,scripts_js_gz,scripts_js_gz_len,"text/javascript");
+  });  
 
   // Handle requests for pages that do not exist
   server.onNotFound(onPageNotFound);
@@ -312,16 +294,17 @@ void Web_loop(void){
     StaticJsonDocument<300> doc;                      //Memory pool
     doc.clear();
     doc["counter"] = counter;
-    doc["gpsFix"] = String(blueFly.nmea.isValid());
-    doc["gpsNumSat"] = String(blueFly.nmea.getNumSatellites());
-    doc["gpslat"] = String(blueFly.nmea.getLatitude() / 1000000.,6);
-    doc["gpslon"] = String(blueFly.nmea.getLongitude() / 1000000.,6);
-    blueFly.nmea.getAltitude(alt);
-    doc["gpsalt"] = String(alt / 1000.,2);
+    doc["gpsFix"] = String(status.gps.Fix);
+    doc["gpsNumSat"] = String(status.gps.NumSat);
+    doc["gpslat"] = String(status.gps.Lat,6);
+    doc["gpslon"] = String(status.gps.Lon,6);
+    doc["gpsalt"] = String(status.gps.alt,2);
     doc["tLoop"] = status.tLoop;
     doc["tMaxLoop"] = status.tMaxLoop;
     doc["freeHeap"] = xPortGetFreeHeapSize();
     doc["fHeapMin"] = xPortGetMinimumEverFreeHeapSize();
+    doc["battV"] = String(status.battery.voltage/1000.0);
+    doc["battPerc"] = status.battery.percent;
 
     /*
     doc["vBatt"] = String((float)status.vBatt/1000.,2);
