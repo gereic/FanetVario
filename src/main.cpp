@@ -87,6 +87,7 @@ TwoWire *pI2cOne = &Wire1;
 BlueFly blueFly;
 Flarm flarm;
 volatile bool ppsTriggered;
+volatile uint32_t tPPS = millis();
 struct SettingsData setting;
 struct StatusData status;
 bool WebUpdateRunning = false;
@@ -436,6 +437,7 @@ void printSettings(){
 void IntPPS(){
   digitalWrite(PIN_LED, !digitalRead(PIN_LED));
   ppsTriggered = true;
+  tPPS = millis();
 }
 
 /*
@@ -831,8 +833,15 @@ void BlinkLed(uint32_t tAct){
 bool sendFanetStatus(){
   static long oldAlt = 0;
   static float oldTurnrate = 0.0;  
+  //msg has to sent max 100ms after pps !!
   //if (!blueFly.nmea.isValid()) return;
+  /*
+  if ((millis() - tPPS) < 400){
+    return false;
+  }
+  */
   if (!blueFly.nmea.isNewMsgValid()) return false;
+  //Serial.println("OK");
   status.gps.NumSat = blueFly.nmea.getNumSatellites(); 
   status.gps.Fix = 1;
   status.gps.Lat = blueFly.nmea.getLatitude() / 1000000.;
@@ -936,7 +945,7 @@ void loop() {
   uint32_t tAct = millis();
   static uint32_t tLoop = millis();
   static uint32_t tSerialRec = millis();
-  static uint32_t tPPS =  millis();
+  //static uint32_t tPPS =  millis();
 
   status.tLoop = tAct - tLoop;
   tLoop = tAct;
@@ -990,7 +999,6 @@ void loop() {
     ppsTriggered = false;
     //Serial.println("**************** PPS triggered *******************");
     blueFly.nmea.clearNewMsgValid(); //clear flag msg is valid
-    tPPS = millis();
   }
   if (timeOver(millis(),tPPS,10000)){
     //no pps for more then 10sec. --> clear GPS-state
@@ -1006,12 +1014,10 @@ void loop() {
   nmeaout.run();
   sendData2Client(nmeaout.getSendData());  
 
-  sendFanetStatus(); //~20ms after pps we have GPRMC and we send the message
-  /*
+  //sendFanetStatus(); //~20ms after pps we have GPRMC and we send the message
   if (sendFanetStatus()){
     log_i("timediff sendFlarm=%d",millis()-tPPS); //~20ms
   }
-  */
   checkFlyingState(millis());
   readBatt(millis());
   for (uint8_t i = 0; i < NUMBUTTONS; i++) {

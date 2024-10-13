@@ -554,6 +554,7 @@ void Fanet::writeStateData2FANET(stateData *tData){
     _myData.speed = tData->speed;
     if (bInitOk){
         pFanetSerial->print(sFNS);
+        //Serial.print(sFNS);
     }
 }
 

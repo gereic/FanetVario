@@ -207,7 +207,7 @@ void MicroNMEA::clear(void)
 	_numSat = 0;
 	_hdop = 255;
 	_isValid = false;
-	_isNewMsgValid = 0;
+	_isNewMsgValid = false;
 	_latitude = 999000000L;
 	_longitude = 999000000L;
 	_altitude = _geoidAlt = _speed = _course = LONG_MIN;
@@ -274,11 +274,13 @@ const char* MicroNMEA::parseTime(const char* s)
 	uint32_t newTime;
 	newTime = (uint32_t(_hour) * 60 *60) + (uint32_t(_minute) * 60) + uint32_t(_second);
 	//Serial.println(newTime);
+	/*
 	if (actTimestamp == newTime){
 		//Serial.println("new data ok");
-		_isNewMsgValid = 1; //
-	} 
+		_isNewMsgValid = true; //we have GPRMC and GPGGA
+	}
 	actTimestamp = newTime;
+	*/
 	return skipField(s + 9);
 }
 
@@ -328,11 +330,6 @@ bool MicroNMEA::processGGA(const char *s)
 	s += 2; // unit an comma
 	_geoidAlt = parseFloat(s, 3, &s);
 	_altitudeValid = true;
-	// That's all we care about
-	//if (_isValid) _isNewMsgValid |= 0x01;
-	//Serial.print("GGA valid=");
-	//Serial.println(_isNewMsgValid);
-
 	return true;
 }
 
@@ -366,9 +363,6 @@ bool MicroNMEA::processRMC(const char* s)
 	_speed = parseFloat(s, 3, &s);
 	_course = parseFloat(s, 3, &s);
 	s = parseDate(s);
-	// That's all we care about
-	//if (_isValid) _isNewMsgValid |= 0x02;
-	//Serial.print("RMC valid=");
-	//Serial.println(_isNewMsgValid);
+	_isNewMsgValid = true; //we have GPRMC
 	return true;
 }

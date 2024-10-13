@@ -67,15 +67,14 @@ public:
 	}
 
 	void clearNewMsgValid(void){
-		_isNewMsgValid = 0;
+		//actTimestamp = 0;
+		_isNewMsgValid = false;
 	}
 
 	bool isNewMsgValid(void) {
 		bool ret = false;
-		if (_isNewMsgValid){ //we got GPRMC
-			ret = true;
-			_isNewMsgValid = 0;
-		} 		
+		ret = _isNewMsgValid;
+		_isNewMsgValid = false;
 		return ret;
 	}
 
@@ -189,7 +188,7 @@ private:
 	// Variables parsed and kept for user
 	char _navSystem;
 	bool _isValid;
-	uint8_t _isNewMsgValid;
+	bool _isNewMsgValid;
 	long _latitude, _longitude; // In millionths of a degree
 	long _altitude; // In millimetres
 	long _geoidAlt; // in millimetres
